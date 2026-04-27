@@ -1,4 +1,4 @@
-rocess.env.NODE_ENV = 'test';
+process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL       = process.env.DATABASE_URL       || "postgresql://postgres:Iwtbhpl1.1@localhost:5432/leanstock";
 process.env.REDIS_URL          = process.env.REDIS_URL          || "redis://localhost:6379";
 process.env.JWT_SECRET         = process.env.JWT_SECRET         || "12345678901234567890123456789012";
