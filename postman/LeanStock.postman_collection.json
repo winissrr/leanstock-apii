@@ -1,0 +1,274 @@
+{
+  "info": {
+    "name": "LeanStock API",
+    "_postman_id": "d3a42c22-7c3b-4d3b-8dd5-leanstock0001",
+    "description": "Auth and core inventory endpoints for defense demo.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/register",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tenantName\": \"Acme Warehouse\",\n  \"tenantSlug\": \"acme\",\n  \"firstName\": \"Aida\",\n  \"lastName\": \"Nur\",\n  \"email\": \"aida@acme.test\",\n  \"password\": \"StrongPass1\",\n  \"role\": \"ADMIN\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tenantSlug\": \"acme\",\n  \"email\": \"aida@acme.test\",\n  \"password\": \"StrongPass1\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Refresh",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/refresh",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/logout",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Me",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/me"
+      }
+    },
+    {
+      "name": "Create Product",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/products",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sku\": \"SKU-001\",\n  \"name\": \"Rice Bag\",\n  \"unitPrice\": 12.5,\n  \"reorderThreshold\": 4,\n  \"isDecayEnabled\": true,\n  \"decayDaysThreshold\": 7,\n  \"decayPercent\": 10\n}"
+        }
+      }
+    },
+    {
+      "name": "List Products",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/products?limit=20&sort=desc"
+      }
+    },
+    {
+      "name": "Create Location",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/locations",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Warehouse A\",\n  \"address\": \"A street\"\n}"
+        }
+      }
+    },
+    {
+      "name": "List Locations",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/locations"
+      }
+    },
+    {
+      "name": "Receive Stock",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/inventory/receive",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"locationId\": \"{{locationId}}\",\n  \"quantity\": 10,\n  \"supplierRef\": \"SUP-1\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Transfer Stock",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/inventory/transfer",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"fromLocationId\": \"{{fromLocationId}}\",\n  \"toLocationId\": \"{{toLocationId}}\",\n  \"quantity\": 4,\n  \"note\": \"Move stock\"\n}"
+        }
+      }
+    },
+    {
+      "name": "List Inventory",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/inventory"
+      }
+    },
+    {
+      "name": "Valuation Report",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/reports/valuation"
+      }
+    },
+    {
+      "name": "Alerts",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/alerts"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "productId",
+      "value": ""
+    },
+    {
+      "key": "locationId",
+      "value": ""
+    },
+    {
+      "key": "fromLocationId",
+      "value": ""
+    },
+    {
+      "key": "toLocationId",
+      "value": ""
+    }
+  ]
+}
