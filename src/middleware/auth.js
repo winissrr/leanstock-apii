@@ -1,41 +1,21 @@
-const { verifyAccessToken } = require('../utils/jwt');
-const { redis } = require('../config/redis');
-const { ApiError } = require('./errorHandler');
+const { verifyAccessToken } = require('../utils/jwt'); 
 
-function extractToken(req) {
-  const header = req.headers.authorization || '';
-  const [, token] = header.split(' ');
-  return token || null;
-}
+function authenticate(req, res, next) {
+  const authHeader = req.headers.authorization;
 
-async function authenticate(req, res, next) {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  const token = authHeader.split(' ')[1];
+
   try {
-    const token = extractToken(req);
-    if (!token) throw new ApiError(401, 'Unauthorized', 'Missing bearer token');
-
     const payload = verifyAccessToken(token);
-    if (!payload?.jti) throw new ApiError(401, 'Unauthorized', 'Invalid token payload');
-
-    const blacklisted = await redis.get(`blacklist:${payload.jti}`);
-    if (blacklisted) throw new ApiError(401, 'Unauthorized', 'Token revoked');
-
-    req.user = {
-      id: payload.sub,
-      tenantId: payload.tenantId,
-      role: payload.role,
-      jti: payload.jti
-    };
-    req.accessToken = token;
+    req.user = { ...payload, id: payload.sub };  
     next();
   } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return next(new ApiError(401, 'Unauthorized', 'Token expired'));
-    }
-    if (err.name === 'JsonWebTokenError') {
-      return next(new ApiError(401, 'Unauthorized', 'Invalid token'));
-    }
-    next(err);
+    return res.status(401).json({ message: 'Invalid token' });
   }
 }
 
-module.exports = { authenticate };
+module.exports = { authenticate }; 
