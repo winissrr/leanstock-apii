@@ -1,57 +1,65 @@
-class ApiError extends Error {
-  constructor(status, title, detail, extra = {}) {
-    super(detail || title);
-    this.status = status;
-    this.title = title;
-    this.detail = detail || title;
-    this.extra = extra;
-  }
-}
+const { ZodError } = require('zod');
 
-function notFound(req, res, next) {
-  next(new ApiError(404, 'Not Found', `Route ${req.method} ${req.originalUrl} not found`));
-}
-
-function errorHandler(err, req, res, next) {
-  if (res.headersSent) return next(err);
-
-  if (err?.name === 'ZodError') {
+function errorHandler(err, req, res, next) { 
+  if (err instanceof ZodError) {
     return res.status(422).json({
-      type: 'https://httpstatuses.com/422',
+      type: 'https://leanstock.io/errors/validation',
       title: 'Validation Error',
       status: 422,
-      detail: err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
-      issues: err.issues
+      detail: 'One or more request fields failed validation.',
+      errors: err.issues.map((i) => ({
+        field: i.path.join('.'),
+        message: i.message,
+      })),
     });
   }
 
-  if (err?.code === 'P2002') {
+  if (err.code === 'P2002') {
+    const field = err.meta?.target?.join(', ') || 'field';
     return res.status(409).json({
-      type: 'https://httpstatuses.com/409',
+      type: 'https://leanstock.io/errors/conflict',
       title: 'Conflict',
       status: 409,
-      detail: 'Unique constraint violation'
+      detail: `A record with the same ${field} already exists.`,
     });
   }
 
-  if (err?.code === 'P2025') {
+  if (err.code === 'P2025') {
     return res.status(404).json({
-      type: 'https://httpstatuses.com/404',
+      type: 'https://leanstock.io/errors/not-found',
       title: 'Not Found',
       status: 404,
-      detail: 'Record not found'
+      detail: err.meta?.cause || 'Resource not found.',
     });
   }
 
-  const status = err.status || 500;
-  const title = err.title || (status === 500 ? 'Internal Server Error' : 'Error');
-  return res.status(status).json({
-    type: `https://httpstatuses.com/${status}`,
-    title,
-    status,
-    detail: err.detail || err.message || 'Unexpected error',
-    ...(err.extra || {})
+  if (err.statusCode) {
+    return res.status(err.statusCode).json({
+      type: `https://leanstock.io/errors/${err.code || 'error'}`,
+      title: err.title || 'Error',
+      status: err.statusCode,
+      detail: err.message,
+    });
+  }
+
+  console.error('[LeanStock] Unhandled error:', err);
+  return res.status(500).json({
+    type: 'https://leanstock.io/errors/internal',
+    title: 'Internal Server Error',
+    status: 500,
+    detail:
+      process.env.NODE_ENV === 'production'
+        ? 'An unexpected error occurred.'
+        : err.message,
   });
 }
 
-module.exports = { ApiError, notFound, errorHandler };
+function createError(statusCode, message, { code, title } = {}) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  err.code = code;
+  err.title = title;
+  return err;
+}
+
+module.exports = { errorHandler, createError };

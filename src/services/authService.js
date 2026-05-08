@@ -1,211 +1,301 @@
-const { prisma } = require('../config/database');
-const env = require('../config/env');
-const { hashPassword, verifyPassword } = require('../utils/password');
-const { createJti, signAccessToken, signRefreshToken, hashToken } = require('../utils/jwt');
-const { ApiError } = require('../middleware/errorHandler');
-const { redis } = require('../config/redis');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const prisma = require('../config/database');
+const env = require('../config/env');
+const { getRedisClient } = require('../utils/redisClient');
+const { createError } = require('../middleware/errorHandler');
+const {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} = require('./emailService');
 
-const ACCOUNT_LOCK_MINUTES = 15;
-
-function buildUserPayload(user) {
-  return {
-    sub: user.id,
-    tenantId: user.tenantId,
-    role: user.role
-  };
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-async function persistRefreshToken(userId, refreshToken, expiresAt) {
-  const tokenHash = hashToken(refreshToken);
-  await prisma.refreshToken.create({
-    data: {
-      userId,
-      tokenHash,
-      expiresAt
-    }
-  });
-  return tokenHash;
+function generateOpaqueToken(bytes = 32) {
+  return crypto.randomBytes(bytes).toString('hex');
 }
 
-async function createAuthPair(user) {
-  const accessToken = signAccessToken({
-    ...buildUserPayload(user),
-    jti: createJti()
-  });
-
-  const refreshToken = signRefreshToken({
-    ...buildUserPayload(user),
-    jti: createJti()
-  });
-
-  const decoded = jwt.decode(refreshToken);
-  await persistRefreshToken(user.id, refreshToken, new Date(decoded.exp * 1000));
-
-  return { accessToken, refreshToken };
+function signAccessToken(user) {
+  return jwt.sign(
+    { sub: user.id, tenantId: user.tenantId, role: user.role, email: user.email },
+    env.JWT_SECRET,
+    { expiresIn: env.ACCESS_TOKEN_TTL },
+  );
 }
 
-async function registerUser(input) {
-  const { tenantName, tenantSlug, firstName, lastName, email, password, role } = input;
+function signRefreshToken(user) {
+  return jwt.sign(
+    { sub: user.id },
+    env.JWT_REFRESH_SECRET,
+    { expiresIn: env.REFRESH_TOKEN_TTL },
+  );
+}
 
-  const tenant = await prisma.tenant.upsert({
-    where: { slug: tenantSlug },
-    update: {},
-    create: { name: tenantName, slug: tenantSlug }
-  });
+async function register({ email, password, firstName, lastName, tenantSlug, tenantName }) {
+  let tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
 
-  const existing = await prisma.user.findUnique({
-    where: {
-      tenantId_email: {
-        tenantId: tenant.id,
-        email
-      }
-    }
-  });
-
-  if (existing) {
-    throw new ApiError(409, 'Conflict', 'Email already exists within this tenant');
+  if (!tenant) {
+    tenant = await prisma.tenant.create({
+      data: { name: tenantName || tenantSlug, slug: tenantSlug },
+    });
   }
 
-  const passwordHash = await hashPassword(password);
+  const existing = await prisma.user.findUnique({
+    where: { tenantId_email: { tenantId: tenant.id, email } },
+  });
+  if (existing) {
+    throw createError(409, 'An account with this email already exists.', {
+      code: 'email-exists',
+      title: 'Conflict',
+    });
+  }
+
+  const passwordHash = await bcrypt.hash(password, env.BCRYPT_SALT_ROUNDS);
+  const verifyToken = generateOpaqueToken();
+  const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); 
+  const userCount = await prisma.user.count({ where: { tenantId: tenant.id } });
+  const role = userCount === 0 ? 'ADMIN' : 'STAFF';
+
   const user = await prisma.user.create({
     data: {
       tenantId: tenant.id,
       email,
       passwordHash,
-      role: role || 'ADMIN',
       firstName,
-      lastName
-    }
+      lastName,
+      role,
+      verifyToken: hashToken(verifyToken),
+      verifyExpires,
+    },
   });
 
-  const auth = await createAuthPair(user);
+  sendVerificationEmail({ to: email, firstName, token: verifyToken }).catch((err) =>
+    console.error('[emailService] Failed to send verification email:', err.message),
+  );
 
-  return { user, ...auth };
+  return { user: sanitizeUser(user), tenant };
 }
 
-async function loginUser({ tenantSlug, email, password, ipAddress }) {
-  const tenant = await prisma.tenant.findUnique({
-    where: { slug: tenantSlug }
-  });
-
-  if (!tenant || tenant.deletedAt) {
-    throw new ApiError(401, 'Unauthorized', 'Invalid credentials');
-  }
-
-  const user = await prisma.user.findUnique({
+async function verifyEmail(token) {
+  const tokenHash = hashToken(token);
+  const user = await prisma.user.findFirst({
     where: {
-      tenantId_email: {
-        tenantId: tenant.id,
-        email
-      }
-    }
+      verifyToken: tokenHash,
+      verifyExpires: { gt: new Date() },
+      isVerified: false,
+    },
   });
-
-  if (!user || !user.isActive || user.deletedAt) {
-    throw new ApiError(401, 'Unauthorized', 'Invalid credentials');
-  }
-
-  if (user.lockedUntil && user.lockedUntil > new Date()) {
-    throw new ApiError(423, 'Locked', 'Account temporarily locked');
-  }
-
-  const valid = await verifyPassword(password, user.passwordHash);
-  if (!valid) {
-    const attempts = user.loginAttempts + 1;
-    const shouldLock = attempts >= 5;
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        loginAttempts: attempts,
-        lockedUntil: shouldLock ? new Date(Date.now() + ACCOUNT_LOCK_MINUTES * 60 * 1000) : null
-      }
+  if (!user) {
+    throw createError(400, 'Invalid or expired verification token.', {
+      code: 'invalid-token',
+      title: 'Bad Request',
     });
-    throw new ApiError(401, 'Unauthorized', 'Invalid credentials');
   }
 
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      loginAttempts: 0,
-      lockedUntil: null
-    }
+      isVerified: true,
+      verifyToken: null,
+      verifyExpires: null,
+    },
   });
 
-  const auth = await createAuthPair(user);
+  return { message: 'Email verified successfully. You may now log in.' };
+}
 
-  await prisma.auditLog.create({
-    data: {
-      tenantId: tenant.id,
-      userId: user.id,
-      action: 'auth.login',
-      entityType: 'User',
-      entityId: user.id,
-      newValue: { at: new Date().toISOString() },
-      ipAddress: ipAddress || null
-    }
+async function login({ email, password, tenantSlug }) {
+  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+  if (!tenant || !tenant.isActive) {
+    throw createError(401, 'Invalid credentials.', { code: 'invalid-credentials', title: 'Unauthorized' });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { tenantId_email: { tenantId: tenant.id, email } },
   });
 
-  return { user, ...auth };
-}
-
-async function refreshAccessToken(refreshToken) {
-  if (!refreshToken) {
-    throw new ApiError(401, 'Unauthorized', 'Missing refresh token');
+  if (!user || !user.isActive) {
+    throw createError(401, 'Invalid credentials.', { code: 'invalid-credentials', title: 'Unauthorized' });
   }
 
-  const payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET);
-  const tokenHash = hashToken(refreshToken);
-  const stored = await prisma.refreshToken.findUnique({ where: { tokenHash }, include: { user: true } });
-
-  if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
-    throw new ApiError(403, 'Forbidden', 'Refresh token revoked or expired');
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    const retryAfter = Math.ceil((user.lockedUntil - Date.now()) / 1000);
+    throw createError(
+      423,
+      `Account locked. Try again in ${retryAfter} seconds.`,
+      { code: 'account-locked', title: 'Locked' },
+    );
   }
 
-  if (!stored.user.isActive || stored.user.deletedAt) {
-    throw new ApiError(403, 'Forbidden', 'User inactive');
+  const passwordOk = await bcrypt.compare(password, user.passwordHash);
+
+  if (!passwordOk) {
+    const attempts = user.loginAttempts + 1;
+    const lockUntil = attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { loginAttempts: attempts, lockedUntil: lockUntil },
+    });
+    throw createError(401, 'Invalid credentials.', { code: 'invalid-credentials', title: 'Unauthorized' });
   }
 
-  return {
-    accessToken: signAccessToken({
-      sub: payload.sub,
-      tenantId: payload.tenantId,
-      role: payload.role,
-      jti: createJti()
-    })
-  };
-}
-
-async function logout({ accessToken, refreshToken }) {
-  if (accessToken) {
-    const decoded = jwt.decode(accessToken);
-    if (decoded?.jti && decoded?.exp) {
-      const ttlSeconds = Math.max(1, decoded.exp - Math.floor(Date.now() / 1000));
-      await redis.set(`blacklist:${decoded.jti}`, '1', 'EX', ttlSeconds);
-    }
-  }
-
-  if (refreshToken) {
-    const tokenHash = hashToken(refreshToken);
-    await prisma.refreshToken.updateMany({
-      where: { tokenHash, revokedAt: null },
-      data: { revokedAt: new Date() }
+  if (!user.isVerified) {
+    throw createError(403, 'Please verify your email before logging in.', {
+      code: 'email-not-verified',
+      title: 'Forbidden',
     });
   }
 
-  return { ok: true };
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { loginAttempts: 0, lockedUntil: null },
+  });
+
+  const accessToken = signAccessToken(user);
+  const refreshToken = signRefreshToken(user);
+
+  const refreshTTL = parseTTLtoMs(env.REFRESH_TOKEN_TTL);
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + refreshTTL),
+    },
+  });
+
+  return { accessToken, refreshToken, user: sanitizeUser(user) };
 }
 
-async function getCurrentUser(userId) {
-  return prisma.user.findUnique({
-    where: { id: userId }
+async function refreshTokens(rawRefreshToken) {
+  let payload;
+  try {
+    payload = jwt.verify(rawRefreshToken, env.JWT_REFRESH_SECRET);
+  } catch {
+    throw createError(401, 'Invalid or expired refresh token.', {
+      code: 'invalid-token',
+      title: 'Unauthorized',
+    });
+  }
+
+  const tokenHash = hashToken(rawRefreshToken);
+  const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
+
+  if (!stored || stored.expiresAt < new Date()) {
+    throw createError(401, 'Refresh token not found or expired.', {
+      code: 'invalid-token',
+      title: 'Unauthorized',
+    });
+  }
+
+  await prisma.refreshToken.delete({ where: { tokenHash } });
+
+  const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+  if (!user || !user.isActive) {
+    throw createError(401, 'User not found.', { code: 'user-not-found', title: 'Unauthorized' });
+  }
+
+  const accessToken = signAccessToken(user);
+  const newRefreshToken = signRefreshToken(user);
+  const refreshTTL = parseTTLtoMs(env.REFRESH_TOKEN_TTL);
+
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(newRefreshToken),
+      expiresAt: new Date(Date.now() + refreshTTL),
+    },
   });
+
+  return { accessToken, refreshToken: newRefreshToken };
+}
+
+async function logout({ accessToken, refreshToken }) {
+  try {
+    const payload = jwt.decode(accessToken);
+    if (payload && payload.exp) {
+      const ttl = payload.exp - Math.floor(Date.now() / 1000);
+      if (ttl > 0) {
+        const redis = getRedisClient();
+        await redis.set(`bl:${accessToken}`, '1', 'EX', ttl);
+      }
+    }
+  } catch { }
+  if (refreshToken) {
+    const tokenHash = hashToken(refreshToken);
+    await prisma.refreshToken.deleteMany({ where: { tokenHash } }).catch(() => {});
+  }
+}
+
+async function forgotPassword({ email, tenantSlug }) {
+  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+  if (!tenant) return { message: 'If that email exists, a reset link has been sent.' };
+
+  const user = await prisma.user.findUnique({
+    where: { tenantId_email: { tenantId: tenant.id, email } },
+  });
+  if (!user || !user.isActive) {
+    return { message: 'If that email exists, a reset link has been sent.' };
+  }
+
+  const resetToken = generateOpaqueToken();
+  const resetExpires = new Date(Date.now() + 60 * 60 * 1000); 
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { resetToken: hashToken(resetToken), resetExpires },
+  });
+
+  sendPasswordResetEmail({ to: email, firstName: user.firstName, token: resetToken }).catch(
+    (err) => console.error('[emailService] Failed to send reset email:', err.message),
+  );
+
+  return { message: 'If that email exists, a reset link has been sent.' };
+}
+
+async function resetPassword({ token, newPassword }) {
+  const tokenHash = hashToken(token);
+  const user = await prisma.user.findFirst({
+    where: { resetToken: tokenHash, resetExpires: { gt: new Date() } },
+  });
+  if (!user) {
+    throw createError(400, 'Invalid or expired reset token.', {
+      code: 'invalid-token',
+      title: 'Bad Request',
+    });
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, env.BCRYPT_SALT_ROUNDS);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash, resetToken: null, resetExpires: null, loginAttempts: 0, lockedUntil: null },
+  });
+
+  await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+
+  return { message: 'Password reset successfully. Please log in.' };
+}
+
+function sanitizeUser(user) {
+  const { passwordHash, verifyToken, verifyExpires, resetToken, resetExpires, ...safe } = user;
+  return safe;
+}
+
+function parseTTLtoMs(ttl) {
+  const units = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
+  const match = String(ttl).match(/^(\d+)([smhd])$/);
+  if (!match) return 7 * 86400000;
+  return parseInt(match[1], 10) * units[match[2]];
 }
 
 module.exports = {
-  registerUser,
-  loginUser,
-  refreshAccessToken,
+  register,
+  verifyEmail,
+  login,
+  refreshTokens,
   logout,
-  getCurrentUser
+  forgotPassword,
+  resetPassword,
 };

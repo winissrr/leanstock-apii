@@ -1,19 +1,18 @@
-const router = require('express').Router();
-const { z } = require('zod');
-const validate = require('../middleware/validate');
+const { Router } = require('express');
+const asyncHandler = require('../utils/asyncHandler');
 const { authenticate } = require('../middleware/auth');
-const { requireTenant } = require('../middleware/tenantScope');
-const { requireRoles } = require('../middleware/rbac');
-const { createLocation, getLocations } = require('../controllers/locationController');
+const { tenantScope } = require('../middleware/tenantScope');
+const { rbac } = require('../middleware/rbac');
+const ctrl = require('../controllers/locationController');
 
-const locationSchema = z.object({
-  name: z.string().min(1),
-  address: z.string().max(300).optional().nullable()
-});
+const router = Router();
 
-router.use(authenticate, requireTenant);
+router.use(authenticate, tenantScope);
 
-router.get('/', getLocations);
-router.post('/', requireRoles('ADMIN', 'MANAGER'), validate(locationSchema), createLocation);
+router.get('/', asyncHandler(ctrl.listLocations));
+router.get('/:id', asyncHandler(ctrl.getLocation));
+router.post('/', rbac('ADMIN', 'MANAGER'), asyncHandler(ctrl.createLocation));
+router.patch('/:id', rbac('ADMIN', 'MANAGER'), asyncHandler(ctrl.updateLocation));
+router.delete('/:id', rbac('ADMIN'), asyncHandler(ctrl.deleteLocation));
 
 module.exports = router;

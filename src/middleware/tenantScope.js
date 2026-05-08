@@ -1,11 +1,14 @@
-const { ApiError } = require('./errorHandler');
-
-function requireTenant(req, res, next) {
-  if (!req.user?.tenantId) {
-    return next(new ApiError(401, 'Unauthorized', 'Missing tenant context'));
+function tenantScope(req, res, next) {
+  if (!req.user || !req.user.tenantId) {
+    return res.status(401).json({
+      type: 'https://leanstock.io/errors/unauthorized',
+      title: 'Unauthorized',
+      status: 401,
+      detail: 'Tenant context not established.',
+    });
   }
   req.tenantId = req.user.tenantId;
   next();
 }
 
-module.exports = { requireTenant };
+module.exports = { tenantScope };

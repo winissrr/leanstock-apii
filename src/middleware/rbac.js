@@ -1,15 +1,25 @@
-const { ApiError } = require('./errorHandler');
-
-function requireRoles(...roles) {
+function rbac(...allowedRoles) {
   return (req, res, next) => {
     if (!req.user) {
-      return next(new ApiError(401, 'Unauthorized', 'Authentication required'));
+      return res.status(401).json({
+        type: 'https://leanstock.io/errors/unauthorized',
+        title: 'Unauthorized',
+        status: 401,
+        detail: 'Authentication required.',
+      });
     }
-    if (!roles.includes(req.user.role)) {
-      return next(new ApiError(403, 'Forbidden', `Required role: ${roles.join(', ')}`));
+
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({
+        type: 'https://leanstock.io/errors/forbidden',
+        title: 'Forbidden',
+        status: 403,
+        detail: `Role '${req.user.role}' is not permitted to access this resource. Required: ${allowedRoles.join(' | ')}.`,
+      });
     }
+
     next();
   };
 }
 
-module.exports = { requireRoles };
+module.exports = { rbac };

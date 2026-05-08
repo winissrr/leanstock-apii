@@ -1,26 +1,19 @@
-const router = require('express').Router();
-const { z } = require('zod');
-const validate = require('../middleware/validate');
+const { Router } = require('express');
+const asyncHandler = require('../utils/asyncHandler');
 const { authenticate } = require('../middleware/auth');
-const { requireTenant } = require('../middleware/tenantScope');
-const { requireRoles } = require('../middleware/rbac');
-const { createProduct, getProducts } = require('../controllers/productController');
+const { tenantScope } = require('../middleware/tenantScope');
+const { rbac } = require('../middleware/rbac');
+const ctrl = require('../controllers/productController');
 
-const createProductSchema = z.object({
-  sku: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().max(500).optional().nullable(),
-  category: z.string().max(100).optional().nullable(),
-  unitPrice: z.coerce.number().positive(),
-  reorderThreshold: z.coerce.number().int().min(0).default(0),
-  isDecayEnabled: z.boolean().optional().default(false),
-  decayDaysThreshold: z.coerce.number().int().min(1).default(30),
-  decayPercent: z.coerce.number().positive().default(10)
-});
+const router = Router();
 
-router.use(authenticate, requireTenant);
+router.use(authenticate, tenantScope);
 
-router.get('/', getProducts);
-router.post('/', requireRoles('ADMIN', 'MANAGER'), validate(createProductSchema), createProduct);
+router.get('/', asyncHandler(ctrl.listProducts));
+router.get('/:id', asyncHandler(ctrl.getProduct));
+
+router.post('/', rbac('ADMIN', 'MANAGER'), asyncHandler(ctrl.createProduct));
+router.patch('/:id', rbac('ADMIN', 'MANAGER'), asyncHandler(ctrl.updateProduct));
+router.delete('/:id', rbac('ADMIN'), asyncHandler(ctrl.deleteProduct));
 
 module.exports = router;

@@ -2,538 +2,13 @@ openapi: 3.0.3
 info:
   title: LeanStock API
   version: 1.0.0
-  description: >
-    Multi-tenant inventory system with authentication, RBAC, cursor pagination,
-    and atomic inventory transfer between locations.
+  description: |
+    Production-grade inventory management backend.
+    Multi-tenant, role-based, with dead-stock decay, low-stock alerts, and audit logging.
 
 servers:
-  - url: http://localhost:8000
-
-tags:
-  - name: Auth
-  - name: Products
-  - name: Locations
-  - name: Inventory
-  - name: Reports
-  - name: Alerts
-
-security:
-  - bearerAuth: []
-
-paths:
-  /auth/register:
-    post:
-      tags: [Auth]
-      summary: Register new tenant user
-      description: Creates a tenant and an initial user account.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
-            examples:
-              default:
-                value:
-                  tenantName: Acme Corp
-                  tenantSlug: acme
-                  firstName: Alice
-                  lastName: Smith
-                  email: admin@acme.com
-                  password: StrongPass123!
-                  role: ADMIN
-      responses:
-        '201':
-          description: User created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthTokensResponse'
-              examples:
-                default:
-                  value:
-                    accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                    refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                    tokenType: bearer
-                    user:
-                      id: 2d2f3f2d-8c1a-4a3e-9f47-4b62f0d5b4f1
-                      email: admin@acme.com
-                      role: ADMIN
-                      tenantSlug: acme
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /auth/login:
-    post:
-      tags: [Auth]
-      summary: Login and receive tokens
-      description: Verifies credentials and returns access and refresh tokens.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-            examples:
-              default:
-                value:
-                  tenantSlug: acme
-                  email: admin@acme.com
-                  password: StrongPass123!
-      responses:
-        '200':
-          description: Tokens issued
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthTokensResponse'
-              examples:
-                default:
-                  value:
-                    accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                    refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                    tokenType: bearer
-                    user:
-                      id: 2d2f3f2d-8c1a-4a3e-9f47-4b62f0d5b4f1
-                      email: admin@acme.com
-                      role: ADMIN
-                      tenantSlug: acme
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /auth/refresh:
-    post:
-      tags: [Auth]
-      summary: Refresh access token
-      description: Exchanges a valid refresh token for a new access token.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshRequest'
-            examples:
-              default:
-                value:
-                  refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-      responses:
-        '200':
-          description: New access token
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccessTokenResponse'
-              examples:
-                default:
-                  value:
-                    accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                    tokenType: bearer
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /auth/logout:
-    post:
-      tags: [Auth]
-      summary: Logout and revoke refresh token
-      description: Revokes the provided refresh token.
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LogoutRequest'
-            examples:
-              default:
-                value:
-                  refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-      responses:
-        '200':
-          description: Logged out
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-              examples:
-                default:
-                  value:
-                    message: Logged out successfully
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /auth/me:
-    get:
-      tags: [Auth]
-      summary: Get current user
-      description: Returns the authenticated user from the access token.
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Current user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserResponse'
-              examples:
-                default:
-                  value:
-                    id: 2d2f3f2d-8c1a-4a3e-9f47-4b62f0d5b4f1
-                    email: admin@acme.com
-                    firstName: Alice
-                    lastName: Smith
-                    role: ADMIN
-                    tenantSlug: acme
-                    tenantName: Acme Corp
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /products:
-    get:
-      tags: [Products]
-      summary: List products with cursor pagination
-      description: Returns tenant-scoped products in cursor order.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: cursor
-          in: query
-          required: false
-          schema:
-            type: string
-          example: c_01HZXK3Q2M8Q8W2
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 10
-          example: 10
-      responses:
-        '200':
-          description: Paginated product list
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CursorProductListResponse'
-              examples:
-                default:
-                  value:
-                    data:
-                      - id: prod_1
-                        sku: LAP-001
-                        name: Laptop
-                        category: Electronics
-                        quantity: 50
-                        locationId: loc_1
-                        tenantId: ten_1
-                    nextCursor: c_01HZXK3Q2M8Q8W2
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-    post:
-      tags: [Products]
-      summary: Create product
-      description: Creates a new tenant-scoped product.
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ProductCreateRequest'
-            examples:
-              default:
-                value:
-                  sku: LAP-001
-                  name: Laptop
-                  category: Electronics
-                  locationId: loc_1
-                  quantity: 50
-      responses:
-        '201':
-          description: Product created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProductResponse'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /locations:
-    get:
-      tags: [Locations]
-      summary: List locations
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Locations list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/LocationResponse'
-              examples:
-                default:
-                  value:
-                    - id: loc_1
-                      name: Warehouse A
-                      code: WH-A
-                      tenantId: ten_1
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-    post:
-      tags: [Locations]
-      summary: Create location
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LocationCreateRequest'
-            examples:
-              default:
-                value:
-                  name: Warehouse A
-                  code: WH-A
-      responses:
-        '201':
-          description: Location created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LocationResponse'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /inventory:
-    get:
-      tags: [Inventory]
-      summary: List inventory items
-      description: All results are scoped by tenantId from the JWT.
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Inventory list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/InventoryItemResponse'
-              examples:
-                default:
-                  value:
-                    - id: inv_1
-                      productId: prod_1
-                      locationId: loc_1
-                      quantity: 50
-                      tenantId: ten_1
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /inventory/receive:
-    post:
-      tags: [Inventory]
-      summary: Receive stock into inventory
-      description: Adds stock to a tenant-scoped inventory item.
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReceiveStockRequest'
-            examples:
-              default:
-                value:
-                  productId: prod_1
-                  locationId: loc_1
-                  quantity: 20
-      responses:
-        '200':
-          description: Stock received
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InventoryItemResponse'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /inventory/transfer:
-    post:
-      tags: [Inventory]
-      summary: Transfer stock between locations atomically
-      description: >
-        Performs atomic inventory transfer within the tenant scope.
-        The backend should enforce transactional integrity to prevent overselling.
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TransferStockRequest'
-            examples:
-              default:
-                value:
-                  productId: prod_1
-                  fromLocationId: loc_1
-                  toLocationId: loc_2
-                  quantity: 10
-      responses:
-        '200':
-          description: Transfer successful
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransferResponse'
-              examples:
-                default:
-                  value:
-                    message: Transfer successful
-                    fromLocationId: loc_1
-                    toLocationId: loc_2
-                    quantity: 10
-                    productId: prod_1
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /inventory/adjust:
-    post:
-      tags: [Inventory]
-      summary: Adjust inventory quantity
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AdjustStockRequest'
-            examples:
-              default:
-                value:
-                  inventoryItemId: inv_1
-                  quantityDelta: -3
-                  reason: Damaged goods
-      responses:
-        '200':
-          description: Inventory adjusted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InventoryItemResponse'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /reports/valuation:
-    get:
-      tags: [Reports]
-      summary: Inventory valuation report
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Valuation report
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValuationReportResponse'
-              examples:
-                default:
-                  value:
-                    tenantId: ten_1
-                    totalItems: 250
-                    totalValue: 125000
-                    currency: KZT
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '500': { $ref: '#/components/responses/InternalError' }
-
-  /alerts:
-    get:
-      tags: [Alerts]
-      summary: List stock alerts
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Alerts list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AlertResponse'
-              examples:
-                default:
-                  value:
-                    - id: al_1
-                      productId: prod_1
-                      type: LOW_STOCK
-                      message: Stock below reorder threshold
-                      tenantId: ten_1
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '500': { $ref: '#/components/responses/InternalError' }
+  - url: http://localhost:8000/api
+    description: Local development
 
 components:
   securitySchemes:
@@ -543,498 +18,774 @@ components:
       bearerFormat: JWT
 
   schemas:
-    RegisterRequest:
+    Error:
       type: object
-      required:
-        - tenantName
-        - tenantSlug
-        - firstName
-        - lastName
-        - email
-        - password
-        - role
       properties:
-        tenantName:
-          type: string
-          minLength: 2
-          example: Acme Corp
-        tenantSlug:
-          type: string
-          minLength: 2
-          pattern: '^[a-z0-9-]+$'
-          example: acme
-        firstName:
-          type: string
-          minLength: 1
-          example: Alice
-        lastName:
-          type: string
-          minLength: 1
-          example: Smith
-        email:
-          type: string
-          format: email
-          example: admin@acme.com
-        password:
-          type: string
-          minLength: 8
-          example: StrongPass123!
-        role:
-          type: string
-          enum: [USER, ADMIN]
-          example: ADMIN
-
-    LoginRequest:
-      type: object
-      required:
-        - tenantSlug
-        - email
-        - password
-      properties:
-        tenantSlug:
-          type: string
-          example: acme
-        email:
-          type: string
-          format: email
-          example: admin@acme.com
-        password:
-          type: string
-          example: StrongPass123!
-
-    RefreshRequest:
-      type: object
-      required:
-        - refreshToken
-      properties:
-        refreshToken:
-          type: string
-          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-    LogoutRequest:
-      type: object
-      required:
-        - refreshToken
-      properties:
-        refreshToken:
-          type: string
-          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-    AccessTokenResponse:
-      type: object
-      required:
-        - accessToken
-        - tokenType
-      properties:
-        accessToken:
-          type: string
-        tokenType:
-          type: string
-          example: bearer
-
-    UserBriefResponse:
-      type: object
-      required:
-        - id
-        - email
-        - role
-        - tenantSlug
-      properties:
-        id:
-          type: string
-          format: uuid
-        email:
-          type: string
-          format: email
-        role:
-          type: string
-          enum: [USER, ADMIN]
-        tenantSlug:
-          type: string
-
-    UserResponse:
-      type: object
-      required:
-        - id
-        - email
-        - firstName
-        - lastName
-        - role
-        - tenantSlug
-        - tenantName
-      properties:
-        id:
-          type: string
-          format: uuid
-        email:
-          type: string
-          format: email
-        firstName:
-          type: string
-        lastName:
-          type: string
-        role:
-          type: string
-          enum: [USER, ADMIN]
-        tenantSlug:
-          type: string
-        tenantName:
-          type: string
-
-    AuthTokensResponse:
-      type: object
-      required:
-        - accessToken
-        - refreshToken
-        - tokenType
-        - user
-      properties:
-        accessToken:
-          type: string
-        refreshToken:
-          type: string
-        tokenType:
-          type: string
-          example: bearer
-        user:
-          $ref: '#/components/schemas/UserBriefResponse'
-
-    MessageResponse:
-      type: object
-      required:
-        - message
-      properties:
-        message:
-          type: string
-          example: Success
-
-    ProductCreateRequest:
-      type: object
-      required:
-        - sku
-        - name
-        - category
-        - locationId
-        - quantity
-      properties:
-        sku:
-          type: string
-          example: LAP-001
-        name:
-          type: string
-          example: Laptop
-        category:
-          type: string
-          example: Electronics
-        locationId:
-          type: string
-          example: loc_1
-        quantity:
-          type: integer
-          minimum: 0
-          example: 50
-
-    ProductResponse:
-      type: object
-      required:
-        - id
-        - sku
-        - name
-        - category
-        - quantity
-        - locationId
-        - tenantId
-      properties:
-        id:
-          type: string
-        sku:
-          type: string
-        name:
-          type: string
-        category:
-          type: string
-        quantity:
-          type: integer
-        locationId:
-          type: string
-        tenantId:
-          type: string
-
-    CursorProductListResponse:
-      type: object
-      required:
-        - data
-        - nextCursor
-      properties:
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProductResponse'
-        nextCursor:
-          type: string
-          nullable: true
-
-    LocationCreateRequest:
-      type: object
-      required:
-        - name
-        - code
-      properties:
-        name:
-          type: string
-          example: Warehouse A
-        code:
-          type: string
-          example: WH-A
-
-    LocationResponse:
-      type: object
-      required:
-        - id
-        - name
-        - code
-        - tenantId
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        code:
-          type: string
-        tenantId:
-          type: string
-
-    ReceiveStockRequest:
-      type: object
-      required:
-        - productId
-        - locationId
-        - quantity
-      properties:
-        productId:
-          type: string
-          example: prod_1
-        locationId:
-          type: string
-          example: loc_1
-        quantity:
-          type: integer
-          minimum: 1
-          example: 20
-
-    TransferStockRequest:
-      type: object
-      required:
-        - productId
-        - fromLocationId
-        - toLocationId
-        - quantity
-      properties:
-        productId:
-          type: string
-          example: prod_1
-        fromLocationId:
-          type: string
-          example: loc_1
-        toLocationId:
-          type: string
-          example: loc_2
-        quantity:
-          type: integer
-          minimum: 1
-          example: 10
-
-    TransferResponse:
-      type: object
-      required:
-        - message
-        - productId
-        - fromLocationId
-        - toLocationId
-        - quantity
-      properties:
-        message:
-          type: string
-          example: Transfer successful
-        productId:
-          type: string
-        fromLocationId:
-          type: string
-        toLocationId:
-          type: string
-        quantity:
-          type: integer
-
-    AdjustStockRequest:
-      type: object
-      required:
-        - inventoryItemId
-        - quantityDelta
-        - reason
-      properties:
-        inventoryItemId:
-          type: string
-          example: inv_1
-        quantityDelta:
-          type: integer
-          example: -3
-        reason:
-          type: string
-          example: Damaged goods
-
-    InventoryItemResponse:
-      type: object
-      required:
-        - id
-        - productId
-        - locationId
-        - quantity
-        - tenantId
-      properties:
-        id:
-          type: string
-        productId:
-          type: string
-        locationId:
-          type: string
-        quantity:
-          type: integer
-        tenantId:
-          type: string
-
-    ValuationReportResponse:
-      type: object
-      required:
-        - tenantId
-        - totalItems
-        - totalValue
-        - currency
-      properties:
-        tenantId:
-          type: string
-        totalItems:
-          type: integer
-        totalValue:
-          type: number
-        currency:
-          type: string
-          example: KZT
-
-    AlertResponse:
-      type: object
-      required:
-        - id
-        - productId
-        - type
-        - message
-        - tenantId
-      properties:
-        id:
-          type: string
-        productId:
-          type: string
-        type:
-          type: string
-          enum: [LOW_STOCK, OUT_OF_STOCK, DEAD_STOCK]
-        message:
-          type: string
-        tenantId:
-          type: string
-
-    ErrorResponse:
-      type: object
-      required:
-        - error
-      properties:
-        error:
-          type: string
-          example: Something went wrong
-
-  responses:
-    BadRequest:
-      description: Bad request
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          examples:
-            default:
-              value:
-                error: Bad request
-
-    Unauthorized:
-      description: Unauthorized
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          examples:
-            default:
-              value:
-                error: Unauthorized
-
-    Forbidden:
-      description: Forbidden
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          examples:
-            default:
-              value:
-                error: Forbidden
-
-    NotFound:
-      description: Not found
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          examples:
-            default:
-              value:
-                error: Not found
-
-    Conflict:
-      description: Conflict
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          examples:
-            default:
-              value:
-                error: Conflict
+        type: { type: string, example: "https://leanstock.io/errors/not-found" }
+        title: { type: string, example: "Not Found" }
+        status: { type: integer, example: 404 }
+        detail: { type: string, example: "Resource not found." }
 
     ValidationError:
-      description: Validation error
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          examples:
-            default:
-              value:
-                error: Validation error
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
 
-    RateLimited:
-      description: Too many requests
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          examples:
-            default:
-              value:
-                error: Too many requests
+    Pagination:
+      type: object
+      properties:
+        nextCursor: { type: string, nullable: true, example: "clxyz1234567890" }
+        hasMore: { type: boolean }
 
-    InternalError:
-      description: Internal server error
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          examples:
-            default:
-              value:
-                error: Internal server error
+    User:
+      type: object
+      properties:
+        id: { type: string, example: "clxyz1234567890" }
+        tenantId: { type: string }
+        email: { type: string, example: "admin@acme.com" }
+        firstName: { type: string, example: "John" }
+        lastName: { type: string, example: "Doe" }
+        role: { type: string, enum: [ADMIN, MANAGER, STAFF] }
+        isVerified: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Tenant:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, example: "Acme Corp" }
+        slug: { type: string, example: "acme-corp" }
+
+    Product:
+      type: object
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        sku: { type: string, example: "WIDGET-001" }
+        name: { type: string, example: "Blue Widget" }
+        description: { type: string, nullable: true }
+        category: { type: string, nullable: true, example: "Electronics" }
+        unitPrice: { type: string, example: "49.99" }
+        reorderThreshold: { type: integer, example: 10 }
+        isDecayEnabled: { type: boolean }
+        decayDaysThreshold: { type: integer, example: 30 }
+        decayPercent: { type: string, example: "10.00" }
+        createdAt: { type: string, format: date-time }
+
+    Location:
+      type: object
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        name: { type: string, example: "Main Warehouse" }
+        address: { type: string, nullable: true, example: "123 Industrial Ave" }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    InventoryItem:
+      type: object
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        productId: { type: string }
+        locationId: { type: string }
+        quantity: { type: integer, example: 42 }
+        currentPrice: { type: string, example: "45.00" }
+        originalPrice: { type: string, example: "49.99" }
+        version: { type: integer, example: 3 }
+        lastReceivedAt: { type: string, format: date-time }
+        product:
+          $ref: '#/components/schemas/Product'
+        location:
+          $ref: '#/components/schemas/Location'
+
+    StockTransaction:
+      type: object
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        productId: { type: string }
+        locationId: { type: string }
+        userId: { type: string }
+        type:
+          type: string
+          enum: [INBOUND, OUTBOUND, TRANSFER_IN, TRANSFER_OUT, ADJUSTMENT]
+        quantityDelta: { type: integer, example: 10 }
+        note: { type: string, nullable: true }
+        supplierRef: { type: string, nullable: true, example: "PO-2024-001" }
+        relatedTxId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    StockAlert:
+      type: object
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        inventoryItemId: { type: string }
+        status:
+          type: string
+          enum: [ACTIVE, RESOLVED, SNOOZED]
+        createdAt: { type: string, format: date-time }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        inventoryItem:
+          $ref: '#/components/schemas/InventoryItem'
+
+    ValuationRow:
+      type: object
+      properties:
+        productId: { type: string }
+        sku: { type: string }
+        name: { type: string }
+        category: { type: string, nullable: true }
+        totalQty: { type: integer, example: 150 }
+        currentValue: { type: string, example: "6750.00" }
+        originalValue: { type: string, example: "7498.50" }
+        valueLostToDecay: { type: string, example: "748.50" }
+        locationCount: { type: integer, example: 3 }
+
+  parameters:
+    cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+      description: Cursor from previous page (last item's id)
+    limit:
+      name: limit
+      in: query
+      schema: { type: integer, default: 20, maximum: 100 }
+      description: Number of items per page (max 100)
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ─── Auth ──────────────────────────────────────────────────────────────
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user (and tenant if slug is new)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, firstName, lastName, tenantSlug]
+              properties:
+                email: { type: string, format: email, example: "admin@acme.com" }
+                password: { type: string, minLength: 8, example: "Secure@123" }
+                firstName: { type: string, example: "John" }
+                lastName: { type: string, example: "Doe" }
+                tenantSlug: { type: string, example: "acme-corp" }
+                tenantName: { type: string, example: "Acme Corp" }
+      responses:
+        '201':
+          description: Registered. Verification email sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  userId: { type: string }
+                  tenantId: { type: string }
+        '409': { description: Email already exists }
+        '422': { description: Validation error, content: { application/json: { schema: { $ref: '#/components/schemas/ValidationError' } } } }
+
+  /auth/verify-email:
+    get:
+      tags: [Auth]
+      summary: Verify email address via token link
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Email verified }
+        '400': { description: Invalid or expired token }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive JWT tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, tenantSlug]
+              properties:
+                email: { type: string, format: email, example: "admin@acme.com" }
+                password: { type: string, example: "Secure@123" }
+                tenantSlug: { type: string, example: "acme-corp" }
+      responses:
+        '200':
+          description: Tokens issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  refreshToken: { type: string }
+                  user: { $ref: '#/components/schemas/User' }
+        '401': { description: Invalid credentials }
+        '403': { description: Email not verified }
+        '423': { description: Account locked }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token and get new access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New token pair
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  refreshToken: { type: string }
+        '401': { description: Invalid or expired refresh token }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke tokens and blacklist access token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200': { description: Logged out }
+        '401': { description: Unauthorized }
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request password reset email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, tenantSlug]
+              properties:
+                email: { type: string, format: email }
+                tenantSlug: { type: string }
+      responses:
+        '200': { description: Reset email sent (always 200 to prevent enumeration) }
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password using email token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string }
+                newPassword: { type: string, minLength: 8 }
+      responses:
+        '200': { description: Password reset }
+        '400': { description: Invalid or expired token }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '401': { description: Unauthorized }
+
+  # ─── Products ─────────────────────────────────────────────────────────
+
+  /products:
+    get:
+      tags: [Products]
+      summary: List all products (paginated)
+      parameters:
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+        - name: category
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagination'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Product' } }
+        '401': { description: Unauthorized }
+    post:
+      tags: [Products]
+      summary: Create a product (ADMIN, MANAGER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sku, name, unitPrice]
+              properties:
+                sku: { type: string, example: "WIDGET-001" }
+                name: { type: string, example: "Blue Widget" }
+                description: { type: string }
+                category: { type: string, example: "Electronics" }
+                unitPrice: { type: number, example: 49.99 }
+                reorderThreshold: { type: integer, default: 0 }
+                isDecayEnabled: { type: boolean, default: false }
+                decayDaysThreshold: { type: integer, default: 30 }
+                decayPercent: { type: number, default: 10 }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Product' }
+        '403': { description: Forbidden }
+        '409': { description: SKU already exists }
+        '422': { description: Validation error }
+
+  /products/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Products]
+      summary: Get a product by ID
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Product' }
+        '404': { description: Not found }
+    patch:
+      tags: [Products]
+      summary: Update a product (ADMIN, MANAGER)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                category: { type: string }
+                unitPrice: { type: number }
+                reorderThreshold: { type: integer }
+                isDecayEnabled: { type: boolean }
+                decayDaysThreshold: { type: integer }
+                decayPercent: { type: number }
+      responses:
+        '200': { description: Updated }
+        '403': { description: Forbidden }
+        '404': { description: Not found }
+    delete:
+      tags: [Products]
+      summary: Soft-delete a product (ADMIN only)
+      responses:
+        '204': { description: Deleted }
+        '403': { description: Forbidden }
+        '404': { description: Not found }
+
+  # ─── Inventory ────────────────────────────────────────────────────────
+
+  /inventory:
+    get:
+      tags: [Inventory]
+      summary: List inventory items (paginated)
+      parameters:
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+        - name: locationId
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagination'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/InventoryItem' } }
+
+  /inventory/receive:
+    post:
+      tags: [Inventory]
+      summary: Receive stock (INBOUND) — ADMIN, MANAGER
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, locationId, quantity]
+              properties:
+                productId: { type: string }
+                locationId: { type: string }
+                quantity: { type: integer, minimum: 1, example: 100 }
+                supplierRef: { type: string, example: "PO-2024-001" }
+                note: { type: string }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  inventoryItemId: { type: string }
+                  newQuantity: { type: integer }
+                  transactionId: { type: string }
+        '400': { description: Invalid quantity }
+        '403': { description: Forbidden }
+        '404': { description: Product or location not found }
+        '422': { description: Validation error }
+
+  /inventory/transfer:
+    post:
+      tags: [Inventory]
+      summary: Transfer stock between locations — all roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, fromLocationId, toLocationId, quantity]
+              properties:
+                productId: { type: string }
+                fromLocationId: { type: string }
+                toLocationId: { type: string }
+                quantity: { type: integer, minimum: 1 }
+                note: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  outTransactionId: { type: string }
+                  inTransactionId: { type: string }
+                  sourceQuantity: { type: integer }
+                  destQuantity: { type: integer }
+        '400': { description: Same location or invalid quantity }
+        '422': { description: Insufficient stock }
+
+  /inventory/adjust:
+    post:
+      tags: [Inventory]
+      summary: Adjust inventory quantity (shrinkage, damage) — ADMIN, MANAGER
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, locationId, quantityDelta]
+              properties:
+                productId: { type: string }
+                locationId: { type: string }
+                quantityDelta: { type: integer, example: -3, description: "Negative to reduce, positive to add" }
+                note: { type: string, example: "Damaged goods written off" }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  inventoryItemId: { type: string }
+                  newQuantity: { type: integer }
+                  transactionId: { type: string }
+        '422': { description: Would result in negative stock }
+
+  # ─── Locations ────────────────────────────────────────────────────────
+
+  /locations:
+    get:
+      tags: [Locations]
+      summary: List locations (paginated)
+      parameters:
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagination'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Location' } }
+    post:
+      tags: [Locations]
+      summary: Create a location (ADMIN, MANAGER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, example: "Main Warehouse" }
+                address: { type: string, example: "123 Industrial Ave" }
+      responses:
+        '201': { description: Created }
+        '409': { description: Name already exists }
+
+  /locations/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Locations]
+      summary: Get a location
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found }
+    patch:
+      tags: [Locations]
+      summary: Update a location (ADMIN, MANAGER)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                address: { type: string }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Locations]
+      summary: Soft-delete a location (ADMIN only — must have no active inventory)
+      responses:
+        '204': { description: Deleted }
+        '409': { description: Location has active inventory }
+
+  # ─── Transactions ─────────────────────────────────────────────────────
+
+  /transactions:
+    get:
+      tags: [Transactions]
+      summary: List transactions with filters (paginated)
+      parameters:
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+        - name: productId
+          in: query
+          schema: { type: string }
+        - name: locationId
+          in: query
+          schema: { type: string }
+        - name: type
+          in: query
+          schema: { type: string, enum: [INBOUND, OUTBOUND, TRANSFER_IN, TRANSFER_OUT, ADJUSTMENT] }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagination'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/StockTransaction' } }
+
+  /transactions/{id}:
+    get:
+      tags: [Transactions]
+      summary: Get a transaction by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found }
+
+  # ─── Alerts ───────────────────────────────────────────────────────────
+
+  /alerts:
+    get:
+      tags: [Alerts]
+      summary: List stock alerts (paginated)
+      parameters:
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+        - name: status
+          in: query
+          schema: { type: string, enum: [ACTIVE, RESOLVED, SNOOZED] }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Pagination'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/StockAlert' } }
+
+  /alerts/{id}:
+    patch:
+      tags: [Alerts]
+      summary: Update alert status (ADMIN, MANAGER)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [RESOLVED, SNOOZED] }
+      responses:
+        '200': { description: Updated }
+        '404': { description: Alert not found }
+
+  # ─── Reports ──────────────────────────────────────────────────────────
+
+  /reports/valuation:
+    get:
+      tags: [Reports]
+      summary: Inventory valuation report — current vs original value (ADMIN, MANAGER)
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - name: cursor
+          in: query
+          description: Numeric offset for this heavy aggregation query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/ValuationRow' } }
+                  nextOffset: { type: integer, nullable: true }
+        '403': { description: Forbidden }
+
+  /reports/decay/{inventoryItemId}:
+    get:
+      tags: [Reports]
+      summary: Decay history for an inventory item (ADMIN, MANAGER)
+      parameters:
+        - name: inventoryItemId
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200': { description: Decay log entries }
+
+  /reports/decay/trigger:
+    post:
+      tags: [Reports]
+      summary: Manually trigger the dead-stock decay job (ADMIN only)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  processed: { type: integer }
+                  skipped: { type: integer }
+                  errors: { type: integer }
+        '403': { description: Forbidden }
+
+  /reports/audit:
+    get:
+      tags: [Reports]
+      summary: Audit log for the tenant (ADMIN only)
+      parameters:
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/limit'
+        - name: entityType
+          in: query
+          schema: { type: string }
+        - name: entityId
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Audit entries }
+        '403': { description: Forbidden }
