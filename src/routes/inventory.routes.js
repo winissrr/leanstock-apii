@@ -1,18 +1,13 @@
 const { Router } = require('express');
-const asyncHandler = require('../utils/asyncHandler');
-const { authenticate } = require('../middleware/auth');
-const { tenantScope } = require('../middleware/tenantScope');
-const { rbac } = require('../middleware/rbac');
-const ctrl = require('../controllers/inventoryController');
+const c = require('../controllers/inventoryController');
+const authMw = require('../middleware/auth');
+const rbac = require('../middleware/rbac');
+const tenantScope = require('../middleware/tenantScope');
 
-const router = Router();
-
-router.use(authenticate, tenantScope);
-
-router.get('/', asyncHandler(ctrl.listInventory));
-
-router.post('/receive', rbac('ADMIN', 'MANAGER'), asyncHandler(ctrl.receiveStock));
-router.post('/transfer', rbac('ADMIN', 'MANAGER', 'STAFF'), asyncHandler(ctrl.transferStock));
-router.post('/adjust', rbac('ADMIN', 'MANAGER'), asyncHandler(ctrl.adjustStock));
-
-module.exports = router;
+const r = Router();
+r.use(authMw, tenantScope);
+r.get('/', c.list);
+r.post('/receive', rbac('ADMIN', 'MANAGER', 'STAFF'), c.receive);
+r.post('/transfer', rbac('ADMIN', 'MANAGER', 'STAFF'), c.transfer);
+r.post('/adjust', rbac('ADMIN', 'MANAGER', 'STAFF'), c.adjust);
+module.exports = r;

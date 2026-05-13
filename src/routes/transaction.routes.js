@@ -1,14 +1,9 @@
 const { Router } = require('express');
-const asyncHandler = require('../utils/asyncHandler');
-const { authenticate } = require('../middleware/auth');
-const { tenantScope } = require('../middleware/tenantScope');
-const ctrl = require('../controllers/transactionController');
+const c = require('../controllers/transactionController');
+const authMw = require('../middleware/auth');
+const tenantScope = require('../middleware/tenantScope');
 
-const router = Router();
-
-router.use(authenticate, tenantScope);
-
-router.get('/', asyncHandler(ctrl.listTransactions));
-router.get('/:id', asyncHandler(ctrl.getTransaction));
-
-module.exports = router;
+const r = Router();
+r.use(authMw, tenantScope);
+r.get('/', c.list);
+module.exports = r;

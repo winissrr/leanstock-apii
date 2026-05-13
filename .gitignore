@@ -1,6 +1,6 @@
-node_modules
+node_modules/
 .env
-.env.local
-coverage
-.DS_Store
+coverage/
 *.log
+dist/
+.DS_Store

@@ -1,139 +1,67 @@
-
-// Load & validate environment first — app refuses to start on missing secrets
 const env = require('./config/env');
-
 const express = require('express');
-const cors = require('cors');
 const helmet = require('helmet');
+const cors = require('cors');
 const morgan = require('morgan');
-const path = require('path');
-const YAML = require('js-yaml');
-const fs = require('fs');
 const swaggerUi = require('swagger-ui-express');
+const yaml = require('js-yaml');
+const fs = require('fs');
+const path = require('path');
 
-const { errorHandler } = require('./middleware/errorHandler');
-const { generalApiLimiter } = require('./middleware/rateLimiter');
-const { startDecayCron } = require('./jobs/decayCron');
-const prisma = require('./config/database');
+const errorHandler = require('./middleware/errorHandler');
+const { generalLimiter } = require('./middleware/rateLimiter');
 
-// ─── Routes ───────────────────────────────────────────────────────────────
-const authRoutes = require('./routes/auth.routes');
-const productRoutes = require('./routes/product.routes');
-const inventoryRoutes = require('./routes/inventory.routes');
-const locationRoutes = require('./routes/location.routes');
+const authRoutes        = require('./routes/auth.routes');
+const productRoutes     = require('./routes/product.routes');
+const inventoryRoutes   = require('./routes/inventory.routes');
+const locationRoutes    = require('./routes/location.routes');
 const transactionRoutes = require('./routes/transaction.routes');
-const alertRoutes = require('./routes/alert.routes');
-const reportRoutes = require('./routes/report.routes');
+const alertRoutes       = require('./routes/alert.routes');
+const reportRoutes      = require('./routes/report.routes');
 
-// ─── App ──────────────────────────────────────────────────────────────────
+const { startDecayCron } = require('./jobs/decayCron');
+
 const app = express();
 
-// Security headers
 app.use(helmet());
+app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
+app.use(express.json());
+app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(generalLimiter);
 
-// CORS — no wildcards in production
-app.use(cors({
-  origin: env.NODE_ENV === 'production'
-    ? env.CORS_ORIGIN.split(',').map((s) => s.trim())
-    : true,
-  credentials: true,
-}));
-
-// HTTP request logger
-if (env.NODE_ENV !== 'test') {
-  app.use(morgan('combined'));
-}
-
-// Body parsing
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: false }));
-
-// Global rate limiter on all API routes
-app.use('/api', generalApiLimiter);
-
-// ─── Swagger UI ───────────────────────────────────────────────────────────
 const openapiPath = path.join(__dirname, '..', 'openapi.yaml');
 if (fs.existsSync(openapiPath)) {
-  const openapiDoc = YAML.load(fs.readFileSync(openapiPath, 'utf8'));
-  app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiDoc, {
-    customSiteTitle: 'LeanStock API',
-  }));
+  const spec = yaml.load(fs.readFileSync(openapiPath, 'utf8'));
+  app.use('/docs', swaggerUi.serve, swaggerUi.setup(spec, { customSiteTitle: 'LeanStock API' }));
 }
 
-// ─── Health check ─────────────────────────────────────────────────────────
-app.get('/health', async (req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    return res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-  } catch {
-    return res.status(503).json({ status: 'degraded', error: 'Database unreachable' });
-  }
-});
+app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-// ─── API Routes ───────────────────────────────────────────────────────────
-app.use('/api/auth', authRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/locations', locationRoutes);
-app.use('/api/transactions', transactionRoutes);
-app.use('/api/alerts', alertRoutes);
-app.use('/api/reports', reportRoutes);
+app.use('/auth',         authRoutes);
+app.use('/products',     productRoutes);
+app.use('/inventory',    inventoryRoutes);
+app.use('/locations',    locationRoutes);
+app.use('/transactions', transactionRoutes);
+app.use('/alerts',       alertRoutes);
+app.use('/reports',      reportRoutes);
 
-// ─── 404 handler ──────────────────────────────────────────────────────────
-app.use((req, res) => {
-  res.status(404).json({
-    type: 'https://leanstock.io/errors/not-found',
-    title: 'Not Found',
-    status: 404,
-    detail: `Cannot ${req.method} ${req.path}`,
-  });
-});
+app.use((req, res) => res.status(404).json({ type: 'https://leanstock.io/errors/404', title: 'Not Found', status: 404, detail: `Route ${req.method} ${req.path} not found` }));
 
-// ─── Global error handler (must be last) ──────────────────────────────────
 app.use(errorHandler);
 
-// ─── Server bootstrap ─────────────────────────────────────────────────────
-async function start() {
-  try {
-    await prisma.$connect();
-    console.log('[LeanStock] Database connected.');
-  } catch (err) {
-    console.error('[LeanStock] Database connection failed:', err.message);
-    process.exit(1);
+app.use((err, req, res, next) => {
+  if (err.name === 'ZodError') {
+    return res.status(422).json({ type: 'https://leanstock.io/errors/422', title: 'Validation Error', status: 422, errors: err.errors });
   }
+  next(err);
+});
 
-  const server = app.listen(env.PORT, () => {
-    console.log(`[LeanStock] Server running on port ${env.PORT} (${env.NODE_ENV})`);
-    console.log(`[LeanStock] API docs: http://localhost:${env.PORT}/docs`);
-  });
-
-  // Start cron jobs
-  if (env.NODE_ENV !== 'test') {
-    startDecayCron();
-  }
-
-  // Graceful shutdown
-  process.on('SIGTERM', async () => {
-    console.log('[LeanStock] SIGTERM received — shutting down gracefully...');
-    server.close(async () => {
-      await prisma.$disconnect();
-      process.exit(0);
-    });
-  });
-
-  process.on('SIGINT', async () => {
-    server.close(async () => {
-      await prisma.$disconnect();
-      process.exit(0);
-    });
-  });
-
-  return server;
-}
-
-// Only start server when run directly, not when required (e.g. in tests)
 if (require.main === module) {
-  start();
+  app.listen(env.PORT, () => {
+    console.log(`🚀 LeanStock API running on http://localhost:${env.PORT}`);
+    console.log(`📚 Swagger docs at http://localhost:${env.PORT}/docs`);
+    startDecayCron();
+  });
 }
 
 module.exports = app;

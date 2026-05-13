@@ -1,130 +1,87 @@
 const nodemailer = require('nodemailer');
 const env = require('../config/env');
-let transporter;
 
-function getTransporter() {
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: env.SMTP_PORT === 465,
-      auth:
-        env.SMTP_USER && env.SMTP_PASS
-          ? { user: env.SMTP_USER, pass: env.SMTP_PASS }
-          : undefined,
-    });
-  }
-  return transporter;
+const transporter = nodemailer.createTransport({
+  host: env.SMTP_HOST,
+  port: env.SMTP_PORT,
+  secure: false,
+  auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
+});
+
+async function sendMail({ to, subject, html }) {
+  await transporter.sendMail({ from: env.EMAIL_FROM, to, subject, html });
 }
 
-async function sendMail({ to, subject, html, text }) {
-  if (env.NODE_ENV === 'test') {
-    return { messageId: 'test-mode-skipped' };
-  }
-  const info = await getTransporter().sendMail({
-    from: env.EMAIL_FROM,
-    to,
-    subject,
-    html,
-    text,
-  });
-  return info;
-}
-
-async function sendVerificationEmail({ to, firstName, token }) {
-  const verifyUrl = `${env.APP_URL}/auth/verify-email?token=${token}`;
-  const subject = 'Verify your LeanStock account';
-  const html = `
-    <h2>Welcome to LeanStock, ${firstName}!</h2>
-    <p>Please verify your email address by clicking the link below:</p>
-    <p><a href="${verifyUrl}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none">Verify Email</a></p>
-    <p>This link expires in 24 hours.</p>
-    <p>If you did not create an account, you can ignore this email.</p>
-  `;
-  return sendMail({ to, subject, html, text: `Verify your account: ${verifyUrl}` });
-}
-
-async function sendPasswordResetEmail({ to, firstName, token }) {
-  const resetUrl = `${env.APP_URL}/auth/reset-password?token=${token}`;
-  const subject = 'Reset your LeanStock password';
-  const html = `
-    <h2>Password Reset Request</h2>
-    <p>Hi ${firstName},</p>
-    <p>Click the link below to reset your password. This link is valid for 1 hour.</p>
-    <p><a href="${resetUrl}" style="background:#dc2626;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none">Reset Password</a></p>
-    <p>If you did not request a password reset, please ignore this email.</p>
-  `;
-  return sendMail({ to, subject, html, text: `Reset your password: ${resetUrl}` });
-}
-
-async function sendLowStockAlert({ to, productName, sku, locationName, currentQty, threshold }) {
-  const subject = `[LeanStock Alert] Low stock: ${productName} (${sku})`;
-  const html = `
-    <h2>Low Stock Alert</h2>
-    <p>The following product has fallen below its reorder threshold:</p>
-    <table style="border-collapse:collapse;width:100%">
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Product</strong></td><td style="padding:8px;border:1px solid #ddd">${productName}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>SKU</strong></td><td style="padding:8px;border:1px solid #ddd">${sku}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Location</strong></td><td style="padding:8px;border:1px solid #ddd">${locationName}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Current Quantity</strong></td><td style="padding:8px;border:1px solid #ddd">${currentQty}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Reorder Threshold</strong></td><td style="padding:8px;border:1px solid #ddd">${threshold}</td></tr>
-    </table>
-    <p>Please reorder this product as soon as possible.</p>
-  `;
-  return sendMail({
-    to,
-    subject,
-    html,
-    text: `Low stock alert: ${productName} (${sku}) at ${locationName} — only ${currentQty} left (threshold: ${threshold}).`,
+async function sendVerificationEmail(email, token) {
+  const url = `${env.APP_URL}/auth/verify-email?token=${token}`;
+  await sendMail({
+    to: email,
+    subject: '✅ Verify your LeanStock account',
+    html: `
+      <h2>Welcome to LeanStock!</h2>
+      <p>Click the link below to verify your email address. This link expires in 24 hours.</p>
+      <a href="${url}" style="background:#4F46E5;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">
+        Verify Email
+      </a>
+      <p>Or copy this link: <code>${url}</code></p>
+    `,
   });
 }
 
-async function sendStockReceivedEmail({ to, productName, sku, locationName, quantity, supplierRef }) {
-  const subject = `[LeanStock] Stock received: ${productName} (${sku})`;
-  const html = `
-    <h2>📦 Stock Received</h2>
-    <table style="border-collapse:collapse;width:100%">
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Product</strong></td><td style="padding:8px;border:1px solid #ddd">${productName}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>SKU</strong></td><td style="padding:8px;border:1px solid #ddd">${sku}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Location</strong></td><td style="padding:8px;border:1px solid #ddd">${locationName}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Quantity Added</strong></td><td style="padding:8px;border:1px solid #ddd">${quantity}</td></tr>
-      ${supplierRef ? `<tr><td style="padding:8px;border:1px solid #ddd"><strong>Supplier Ref</strong></td><td style="padding:8px;border:1px solid #ddd">${supplierRef}</td></tr>` : ''}
-    </table>
-  `;
-  return sendMail({
-    to,
-    subject,
-    html,
-    text: `Stock received: ${quantity}x ${productName} (${sku}) at ${locationName}.`,
+async function sendPasswordResetEmail(email, token) {
+  const url = `${env.APP_URL}/auth/reset-password?token=${token}`;
+  await sendMail({
+    to: email,
+    subject: '🔑 Reset your LeanStock password',
+    html: `
+      <h2>Password Reset Request</h2>
+      <p>We received a request to reset your password. Click below — this link expires in 1 hour.</p>
+      <a href="${url}" style="background:#DC2626;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">
+        Reset Password
+      </a>
+      <p>If you didn't request this, ignore this email. Your password will not change.</p>
+    `,
   });
 }
 
-async function sendDecayNotificationEmail({ to, productName, sku, oldPrice, newPrice, decayPercent }) {
-  const subject = `[LeanStock] Price decay applied: ${productName} (${sku})`;
-  const html = `
-    <h2>Dead Stock Price Decay</h2>
-    <p>The daily decay job has reduced the price for a dead-stock item:</p>
-    <table style="border-collapse:collapse;width:100%">
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Product</strong></td><td style="padding:8px;border:1px solid #ddd">${productName}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>SKU</strong></td><td style="padding:8px;border:1px solid #ddd">${sku}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Price Before</strong></td><td style="padding:8px;border:1px solid #ddd">$${oldPrice}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Price After</strong></td><td style="padding:8px;border:1px solid #ddd">$${newPrice}</td></tr>
-      <tr><td style="padding:8px;border:1px solid #ddd"><strong>Decay Rate</strong></td><td style="padding:8px;border:1px solid #ddd">${decayPercent}%</td></tr>
-    </table>
-  `;
-  return sendMail({
-    to,
-    subject,
-    html,
-    text: `Price decay applied to ${productName}: ${oldPrice} → ${newPrice} (-${decayPercent}%).`,
+async function sendLowStockAlertEmail(managerEmail, productName, sku, quantity, threshold, locationName) {
+  await sendMail({
+    to: managerEmail,
+    subject: `⚠️ Low Stock Alert: ${productName} (${sku})`,
+    html: `
+      <h2>Low Stock Alert</h2>
+      <p>The following product has dropped below its reorder threshold:</p>
+      <table style="border-collapse:collapse;width:100%">
+        <tr><td style="padding:8px;border:1px solid #ddd"><strong>Product</strong></td><td style="padding:8px;border:1px solid #ddd">${productName}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd"><strong>SKU</strong></td><td style="padding:8px;border:1px solid #ddd">${sku}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd"><strong>Location</strong></td><td style="padding:8px;border:1px solid #ddd">${locationName}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd"><strong>Current Qty</strong></td><td style="padding:8px;border:1px solid #ddd;color:#DC2626">${quantity}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd"><strong>Reorder Threshold</strong></td><td style="padding:8px;border:1px solid #ddd">${threshold}</td></tr>
+      </table>
+      <p>Please arrange restocking immediately.</p>
+    `,
+  });
+}
+
+async function sendStaffInviteEmail(email, token, inviterName) {
+  const url = `${env.APP_URL}/auth/accept-invite?token=${token}`;
+  await sendMail({
+    to: email,
+    subject: '📦 You have been invited to LeanStock',
+    html: `
+      <h2>You're Invited!</h2>
+      <p>${inviterName} has invited you to join their team on LeanStock.</p>
+      <p>Click the link below to set your password and activate your account. This link expires in 24 hours.</p>
+      <a href="${url}" style="background:#059669;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">
+        Accept Invitation
+      </a>
+    `,
   });
 }
 
 module.exports = {
-  sendMail,
   sendVerificationEmail,
   sendPasswordResetEmail,
-  sendLowStockAlert,
-  sendStockReceivedEmail,
-  sendDecayNotificationEmail,
+  sendLowStockAlertEmail,
+  sendStaffInviteEmail,
 };

@@ -1,88 +1,76 @@
-const { z } = require('zod');
 const authService = require('../services/authService');
+const asyncHandler = require('../utils/asyncHandler');
+const { z } = require('zod');
+
+const createError = (status, msg) => { const e = new Error(msg); e.status = status; e.isOperational = true; return e; };
 
 const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  firstName: z.string().min(1).max(100),
-  lastName: z.string().min(1).max(100),
-  tenantSlug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
-  tenantName: z.string().min(1).max(200).optional(),
+  password: z.string().min(8).regex(/[A-Z]/, 'Must contain uppercase').regex(/[0-9]/, 'Must contain digit'),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  tenantName: z.string().min(1),
 });
 
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-  tenantSlug: z.string().min(1),
+exports.register = asyncHandler(async (req, res) => {
+  const data = registerSchema.parse(req.body);
+  const result = await authService.register(data);
+  res.status(201).json(result);
 });
 
-const refreshSchema = z.object({
-  refreshToken: z.string().min(1),
-});
-
-const forgotSchema = z.object({
-  email: z.string().email(),
-  tenantSlug: z.string().min(1),
-});
-
-const resetSchema = z.object({
-  token: z.string().min(1),
-  newPassword: z.string().min(8),
-});
-
-async function register(req, res) {
-  const body = registerSchema.parse(req.body);
-  const result = await authService.register(body);
-  return res.status(201).json({
-    message: 'Registration successful. Please check your email to verify your account.',
-    userId: result.user.id,
-    tenantId: result.tenant.id,
-  });
-}
-
-async function verifyEmail(req, res) {
-  const token = z.string().min(1).parse(req.query.token);
+exports.verifyEmail = asyncHandler(async (req, res) => {
+  const { token } = req.query;
+  if (!token) throw createError(400, 'Verification token required');
   const result = await authService.verifyEmail(token);
-  return res.status(200).json(result);
-}
+  res.json(result);
+});
 
-async function login(req, res) {
-  const body = loginSchema.parse(req.body);
-  const result = await authService.login(body);
-  return res.status(200).json({
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken,
-    user: result.user,
-  });
-}
+exports.login = asyncHandler(async (req, res) => {
+  const { email, password } = z.object({ email: z.string().email(), password: z.string() }).parse(req.body);
+  const result = await authService.login({ email, password });
+  res.json(result);
+});
 
-async function refresh(req, res) {
-  const { refreshToken } = refreshSchema.parse(req.body);
-  const result = await authService.refreshTokens(refreshToken);
-  return res.status(200).json(result);
-}
-
-async function logout(req, res) {
-  const accessToken = req.headers.authorization?.slice(7);
+exports.refresh = asyncHandler(async (req, res) => {
   const { refreshToken } = req.body;
-  await authService.logout({ accessToken, refreshToken });
-  return res.status(200).json({ message: 'Logged out successfully.' });
-}
+  if (!refreshToken) throw createError(400, 'refreshToken required');
+  const result = await authService.refreshTokens(refreshToken);
+  res.json(result);
+});
 
-async function forgotPassword(req, res) {
-  const body = forgotSchema.parse(req.body);
-  const result = await authService.forgotPassword(body);
-  return res.status(200).json(result);
-}
+exports.logout = asyncHandler(async (req, res) => {
+  await authService.logout(req.token, req.user.sub);
+  res.json({ message: 'Logged out successfully' });
+});
 
-async function resetPassword(req, res) {
-  const body = resetSchema.parse(req.body);
-  const result = await authService.resetPassword(body);
-  return res.status(200).json(result);
-}
+exports.forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = z.object({ email: z.string().email() }).parse(req.body);
+  await authService.forgotPassword(email);
+  res.json({ message: 'If an account exists with that email, a reset link has been sent.' });
+});
 
-async function me(req, res) {
-  return res.status(200).json({ user: req.user });
-}
+exports.resetPassword = asyncHandler(async (req, res) => {
+  const { token, password } = z.object({
+    token: z.string(),
+    password: z.string().min(8).regex(/[A-Z]/).regex(/[0-9]/),
+  }).parse(req.body);
+  await authService.resetPassword(token, password);
+  res.json({ message: 'Password reset successful. You can now log in.' });
+});
 
-module.exports = { register, verifyEmail, login, refresh, logout, forgotPassword, resetPassword, me };
+exports.inviteStaff = asyncHandler(async (req, res) => {
+  const { email, role } = z.object({ email: z.string().email(), role: z.enum(['STAFF', 'MANAGER']).default('STAFF') }).parse(req.body);
+  const result = await authService.inviteStaff({ email, role, tenantId: req.tenantId, invitedById: req.user.sub });
+  res.status(201).json(result);
+});
+
+exports.acceptInvite = asyncHandler(async (req, res) => {
+  const data = z.object({
+    token: z.string(),
+    firstName: z.string().min(1),
+    lastName: z.string().min(1),
+    password: z.string().min(8).regex(/[A-Z]/).regex(/[0-9]/),
+  }).parse(req.body);
+  const result = await authService.acceptInvite(data);
+  res.json(result);
+});

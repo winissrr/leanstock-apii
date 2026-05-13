@@ -1,25 +1,9 @@
-function rbac(...allowedRoles) {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({
-        type: 'https://leanstock.io/errors/unauthorized',
-        title: 'Unauthorized',
-        status: 401,
-        detail: 'Authentication required.',
-      });
-    }
+const createError = (status, msg) => { const e = new Error(msg); e.status = status; e.isOperational = true; return e; };
 
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({
-        type: 'https://leanstock.io/errors/forbidden',
-        title: 'Forbidden',
-        status: 403,
-        detail: `Role '${req.user.role}' is not permitted to access this resource. Required: ${allowedRoles.join(' | ')}.`,
-      });
-    }
-
-    next();
-  };
-}
-
-module.exports = { rbac };
+module.exports = (...allowedRoles) => (req, res, next) => {
+  if (!req.user) return next(createError(401, 'Unauthenticated'));
+  if (!allowedRoles.includes(req.user.role)) {
+    return next(createError(403, `Access denied. Requires role: ${allowedRoles.join(' or ')}`));
+  }
+  next();
+};

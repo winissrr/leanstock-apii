@@ -1,34 +1,12 @@
 const Redis = require('ioredis');
 const env = require('../config/env');
 
-let client;
+const redis = new Redis(env.REDIS_URL, {
+  maxRetriesPerRequest: 3,
+  lazyConnect: true,
+});
 
-function getRedisClient() {
-  if (!client) {
-    client = new Redis(env.REDIS_URL, {
-      maxRetriesPerRequest: 3,
-      lazyConnect: false,
-      enableOfflineQueue: false,
-    });
+redis.on('connect', () => console.log('✅ Redis connected'));
+redis.on('error', (err) => console.error('❌ Redis error:', err.message));
 
-    client.on('error', (err) => {
-      console.error('[Redis] Connection error:', err.message);
-    });
-
-    client.on('connect', () => {
-      if (env.NODE_ENV !== 'test') {
-        console.log('[Redis] Connected');
-      }
-    });
-  }
-  return client;
-}
-
-async function closeRedis() {
-  if (client) {
-    await client.quit();
-    client = null;
-  }
-}
-
-module.exports = { getRedisClient, closeRedis };
+module.exports = redis;

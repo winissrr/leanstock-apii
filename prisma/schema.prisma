@@ -8,7 +8,6 @@ datasource db {
 }
 
 // ─── Enums ────────────────────────────────────────────────
-
 enum Role {
   ADMIN
   MANAGER
@@ -30,7 +29,6 @@ enum AlertStatus {
 }
 
 // ─── Models ───────────────────────────────────────────────
-
 model Tenant {
   id        String    @id @default(cuid())
   name      String
@@ -53,28 +51,26 @@ model User {
   email         String
   passwordHash  String
   role          Role      @default(STAFF)
-  firstName     String
-  lastName      String
+  firstName     String    @default("")
+  lastName      String    @default("")
   isActive      Boolean   @default(true)
-  isVerified    Boolean   @default(false)
-  verifyToken   String?
-  verifyExpires DateTime?
-  resetToken    String?
-  resetExpires  DateTime?
+  emailVerified Boolean   @default(false)
+  emailVerifyToken   String?
+  emailVerifyExpires DateTime?
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
   loginAttempts Int       @default(0)
   lockedUntil   DateTime?
   createdAt     DateTime  @default(now())
   deletedAt     DateTime?
 
-  tenant        Tenant             @relation(fields: [tenantId], references: [id])
-  transactions  StockTransaction[]
-  auditLogs     AuditLog[]
+  tenant       Tenant             @relation(fields: [tenantId], references: [id])
+  transactions StockTransaction[]
+  auditLogs    AuditLog[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([email])
-  @@index([verifyToken])
-  @@index([resetToken])
 }
 
 model Location {
@@ -128,9 +124,9 @@ model InventoryItem {
   lastReceivedAt DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  product   Product   @relation(fields: [productId], references: [id])
-  location  Location  @relation(fields: [locationId], references: [id])
-  alerts    StockAlert[]
+  product  Product      @relation(fields: [productId], references: [id])
+  location Location     @relation(fields: [locationId], references: [id])
+  alerts   StockAlert[]
   decayLogs DecayLog[]
 
   @@unique([productId, locationId])
@@ -150,8 +146,7 @@ model StockTransaction {
   note          String?
   supplierRef   String?
   relatedTxId   String?
-
-  createdAt     DateTime @default(now())
+  createdAt     DateTime        @default(now())
 
   user User @relation(fields: [userId], references: [id])
 

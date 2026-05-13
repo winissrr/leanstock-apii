@@ -1,18 +1,14 @@
 const { Router } = require('express');
-const asyncHandler = require('../utils/asyncHandler');
-const { authenticate } = require('../middleware/auth');
-const { tenantScope } = require('../middleware/tenantScope');
-const { rbac } = require('../middleware/rbac');
-const ctrl = require('../controllers/locationController');
+const c = require('../controllers/locationController');
+const authMw = require('../middleware/auth');
+const rbac = require('../middleware/rbac');
+const tenantScope = require('../middleware/tenantScope');
 
-const router = Router();
-
-router.use(authenticate, tenantScope);
-
-router.get('/', asyncHandler(ctrl.listLocations));
-router.get('/:id', asyncHandler(ctrl.getLocation));
-router.post('/', rbac('ADMIN', 'MANAGER'), asyncHandler(ctrl.createLocation));
-router.patch('/:id', rbac('ADMIN', 'MANAGER'), asyncHandler(ctrl.updateLocation));
-router.delete('/:id', rbac('ADMIN'), asyncHandler(ctrl.deleteLocation));
-
-module.exports = router;
+const r = Router();
+r.use(authMw, tenantScope);
+r.get('/', c.list);
+r.post('/', rbac('ADMIN', 'MANAGER'), c.create);
+r.get('/:id', c.getOne);
+r.patch('/:id', rbac('ADMIN', 'MANAGER'), c.update);
+r.delete('/:id', rbac('ADMIN', 'MANAGER'), c.remove);
+module.exports = r;

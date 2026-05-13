@@ -1,18 +1,18 @@
 const { Router } = require('express');
-const asyncHandler = require('../utils/asyncHandler');
-const { authenticate } = require('../middleware/auth');
-const { loginRateLimiter, registerRateLimiter } = require('../middleware/rateLimiter');
-const ctrl = require('../controllers/authController');
+const c = require('../controllers/authController');
+const authMw = require('../middleware/auth');
+const rbac = require('../middleware/rbac');
+const tenantScope = require('../middleware/tenantScope');
+const { loginLimiter, registerLimiter } = require('../middleware/rateLimiter');
 
-const router = Router();
-
-router.post('/register', registerRateLimiter, asyncHandler(ctrl.register));
-router.get('/verify-email', asyncHandler(ctrl.verifyEmail));
-router.post('/login', loginRateLimiter, asyncHandler(ctrl.login));
-router.post('/refresh', asyncHandler(ctrl.refresh));
-router.post('/forgot-password', loginRateLimiter, asyncHandler(ctrl.forgotPassword));
-router.post('/reset-password', asyncHandler(ctrl.resetPassword));
-router.post('/logout', authenticate, asyncHandler(ctrl.logout));
-router.get('/me', authenticate, asyncHandler(ctrl.me));
-
-module.exports = router;
+const r = Router();
+r.post('/register', registerLimiter, c.register);
+r.get('/verify-email', c.verifyEmail);
+r.post('/login', loginLimiter, c.login);
+r.post('/refresh', c.refresh);
+r.post('/logout', authMw, c.logout);
+r.post('/forgot-password', c.forgotPassword);
+r.post('/reset-password', c.resetPassword);
+r.post('/invite', authMw, tenantScope, rbac('ADMIN', 'MANAGER'), c.inviteStaff);
+r.post('/accept-invite', c.acceptInvite);
+module.exports = r;

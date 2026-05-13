@@ -1,99 +1,59 @@
 const prisma = require('../config/database');
-const { sendLowStockAlert } = require('./emailService');
+const emailService = require('./emailService');
 
-async function checkAndCreateAlert({ tenantId, inventoryItemId, quantity, productId }) {
-  const product = await prisma.product.findFirst({
-    where: { id: productId, tenantId, deletedAt: null },
-  });
-  if (!product || product.reorderThreshold === 0) return null;
-
-  if (quantity > product.reorderThreshold) return null;
-
-  const existing = await prisma.stockAlert.findFirst({
-    where: { inventoryItemId, status: 'ACTIVE' },
-  });
-  if (existing) return existing;
-
-  const alert = await prisma.stockAlert.create({
-    data: { tenantId, inventoryItemId, status: 'ACTIVE' },
-  });
-
-  const item = await prisma.inventoryItem.findUnique({
-    where: { id: inventoryItemId },
-    include: { location: { select: { name: true } } },
-  });
-
-  const admins = await prisma.user.findMany({
-    where: { tenantId, role: { in: ['ADMIN', 'MANAGER'] }, isActive: true, isVerified: true },
-    select: { email: true },
-  });
-
-  for (const admin of admins) {
-    sendLowStockAlert({
-      to: admin.email,
-      productName: product.name,
-      sku: product.sku,
-      locationName: item?.location?.name || 'Unknown',
-      currentQty: quantity,
-      threshold: product.reorderThreshold,
-    }).catch(() => {});
-  }
-
-  return alert;
-}
-
-async function checkAndResolveAlert(inventoryItemId, quantity, tenantId) {
-  const item = await prisma.inventoryItem.findUnique({
-    where: { id: inventoryItemId },
-    include: { product: true },
-  });
-  if (!item) return;
-
-  if (quantity > item.product.reorderThreshold) {
-    await prisma.stockAlert.updateMany({
-      where: { inventoryItemId, status: 'ACTIVE' },
-      data: { status: 'RESOLVED', resolvedAt: new Date() },
-    });
+async function checkAndCreateAlert(tenantId, inventoryItem, product, location) {
+  try {
+    if (inventoryItem.quantity <= product.reorderThreshold) {
+      const existing = await prisma.stockAlert.findFirst({
+        where: { tenantId, inventoryItemId: inventoryItem.id, status: 'ACTIVE' },
+      });
+      if (!existing) {
+        await prisma.stockAlert.create({
+          data: { tenantId, inventoryItemId: inventoryItem.id, status: 'ACTIVE' },
+        });
+        const managers = await prisma.user.findMany({
+          where: { tenantId, role: { in: ['MANAGER', 'ADMIN'] }, isActive: true, deletedAt: null },
+        });
+        for (const mgr of managers) {
+          emailService.sendLowStockAlertEmail(
+            mgr.email, product.name, product.sku,
+            inventoryItem.quantity, product.reorderThreshold, location.name
+          ).catch(console.error);
+        }
+      }
+    } else {
+      await prisma.stockAlert.updateMany({
+        where: { tenantId, inventoryItemId: inventoryItem.id, status: 'ACTIVE' },
+        data: { status: 'RESOLVED', resolvedAt: new Date() },
+      });
+    }
+  } catch (err) {
+    console.error('[Alert] Failed:', err.message);
   }
 }
 
-async function listAlerts({ tenantId, status, cursor, limit }) {
-  const where = { tenantId };
-  if (status) where.status = status;
-
-  const alerts = await prisma.stockAlert.findMany({
+async function getAlerts(tenantId, status, cursor, limit) {
+  const { buildCursorPage, paginateResult } = require('../utils/pagination');
+  const page = buildCursorPage(cursor, limit);
+  const where = { tenantId, ...(status && { status }) };
+  const items = await prisma.stockAlert.findMany({
     where,
-    take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    ...page,
     orderBy: { createdAt: 'desc' },
     include: {
-      inventoryItem: {
-        include: {
-          product: { select: { id: true, sku: true, name: true, reorderThreshold: true } },
-          location: { select: { id: true, name: true } },
-        },
-      },
+      inventoryItem: { include: { product: true, location: true } },
     },
   });
-
-  const hasMore = alerts.length > limit;
-  const data = hasMore ? alerts.slice(0, limit) : alerts;
-  return { data, nextCursor: hasMore ? data[data.length - 1].id : null, hasMore };
+  return paginateResult(items, limit);
 }
 
-async function updateAlertStatus({ alertId, tenantId, status }) {
-  const alert = await prisma.stockAlert.findFirst({
-    where: { id: alertId, tenantId },
+async function updateAlertStatus(tenantId, alertId, status) {
+  const alert = await prisma.stockAlert.findFirst({ where: { id: alertId, tenantId } });
+  if (!alert) { const e = new Error('Alert not found'); e.status = 404; e.isOperational = true; throw e; }
+  return prisma.stockAlert.update({
+    where: { id: alertId },
+    data: { status, ...(status === 'RESOLVED' && { resolvedAt: new Date() }) },
   });
-  if (!alert) {
-    const { createError } = require('../middleware/errorHandler');
-    throw createError(404, 'Alert not found.');
-  }
-
-  const data = { status };
-  if (status === 'RESOLVED') data.resolvedAt = new Date();
-
-  return prisma.stockAlert.update({ where: { id: alertId }, data });
 }
 
-module.exports = { checkAndCreateAlert, checkAndResolveAlert, listAlerts, updateAlertStatus };
+module.exports = { checkAndCreateAlert, getAlerts, updateAlertStatus };

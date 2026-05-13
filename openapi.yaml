@@ -1,18 +1,15 @@
-openapi: 3.0.3
+openapi: "3.0.3"
 info:
   title: LeanStock API
-  version: 1.0.0
-  description: |
-    Production-grade inventory management backend.
-    Multi-tenant, role-based, with dead-stock decay, low-stock alerts, and audit logging.
-
+  version: "1.0.0"
+  description: Production-grade multi-tenant inventory management backend.
 servers:
-  - url: http://localhost:8000/api
+  - url: http://localhost:8000
     description: Local development
 
 components:
   securitySchemes:
-    bearerAuth:
+    BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
@@ -21,220 +18,150 @@ components:
     Error:
       type: object
       properties:
-        type: { type: string, example: "https://leanstock.io/errors/not-found" }
-        title: { type: string, example: "Not Found" }
-        status: { type: integer, example: 404 }
-        detail: { type: string, example: "Resource not found." }
-
-    ValidationError:
-      allOf:
-        - $ref: '#/components/schemas/Error'
-        - type: object
-          properties:
-            errors:
-              type: array
-              items:
-                type: object
-                properties:
-                  field: { type: string }
-                  message: { type: string }
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
 
     Pagination:
       type: object
       properties:
-        nextCursor: { type: string, nullable: true, example: "clxyz1234567890" }
+        data: { type: array, items: {} }
+        nextCursor: { type: string, nullable: true }
         hasMore: { type: boolean }
 
     User:
       type: object
       properties:
-        id: { type: string, example: "clxyz1234567890" }
-        tenantId: { type: string }
-        email: { type: string, example: "admin@acme.com" }
-        firstName: { type: string, example: "John" }
-        lastName: { type: string, example: "Doe" }
+        id: { type: string, example: "clx1a2b3c" }
+        email: { type: string, example: "admin@company.com" }
         role: { type: string, enum: [ADMIN, MANAGER, STAFF] }
-        isVerified: { type: boolean }
-        createdAt: { type: string, format: date-time }
-
-    Tenant:
-      type: object
-      properties:
-        id: { type: string }
-        name: { type: string, example: "Acme Corp" }
-        slug: { type: string, example: "acme-corp" }
+        firstName: { type: string }
+        lastName: { type: string }
 
     Product:
       type: object
       properties:
         id: { type: string }
-        tenantId: { type: string }
-        sku: { type: string, example: "WIDGET-001" }
-        name: { type: string, example: "Blue Widget" }
-        description: { type: string, nullable: true }
-        category: { type: string, nullable: true, example: "Electronics" }
-        unitPrice: { type: string, example: "49.99" }
+        sku: { type: string, example: "PROD-001" }
+        name: { type: string, example: "Widget Alpha" }
+        category: { type: string, example: "Electronics" }
+        unitPrice: { type: number, example: 29.99 }
         reorderThreshold: { type: integer, example: 10 }
         isDecayEnabled: { type: boolean }
         decayDaysThreshold: { type: integer, example: 30 }
-        decayPercent: { type: string, example: "10.00" }
-        createdAt: { type: string, format: date-time }
-
-    Location:
-      type: object
-      properties:
-        id: { type: string }
-        tenantId: { type: string }
-        name: { type: string, example: "Main Warehouse" }
-        address: { type: string, nullable: true, example: "123 Industrial Ave" }
-        isActive: { type: boolean }
-        createdAt: { type: string, format: date-time }
+        decayPercent: { type: number, example: 10 }
 
     InventoryItem:
       type: object
       properties:
         id: { type: string }
-        tenantId: { type: string }
         productId: { type: string }
         locationId: { type: string }
-        quantity: { type: integer, example: 42 }
-        currentPrice: { type: string, example: "45.00" }
-        originalPrice: { type: string, example: "49.99" }
-        version: { type: integer, example: 3 }
-        lastReceivedAt: { type: string, format: date-time }
-        product:
-          $ref: '#/components/schemas/Product'
-        location:
-          $ref: '#/components/schemas/Location'
+        quantity: { type: integer, example: 150 }
+        currentPrice: { type: number, example: 29.99 }
+        originalPrice: { type: number, example: 29.99 }
+        product: { $ref: "#/components/schemas/Product" }
+
+    Location:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, example: "Warehouse A" }
+        address: { type: string, example: "123 Main St" }
 
     StockTransaction:
       type: object
       properties:
         id: { type: string }
-        tenantId: { type: string }
-        productId: { type: string }
-        locationId: { type: string }
-        userId: { type: string }
-        type:
-          type: string
-          enum: [INBOUND, OUTBOUND, TRANSFER_IN, TRANSFER_OUT, ADJUSTMENT]
-        quantityDelta: { type: integer, example: 10 }
-        note: { type: string, nullable: true }
-        supplierRef: { type: string, nullable: true, example: "PO-2024-001" }
-        relatedTxId: { type: string, nullable: true }
+        type: { type: string, enum: [INBOUND, OUTBOUND, TRANSFER_IN, TRANSFER_OUT, ADJUSTMENT] }
+        quantityDelta: { type: integer, example: 50 }
+        note: { type: string }
         createdAt: { type: string, format: date-time }
 
     StockAlert:
       type: object
       properties:
         id: { type: string }
-        tenantId: { type: string }
-        inventoryItemId: { type: string }
-        status:
-          type: string
-          enum: [ACTIVE, RESOLVED, SNOOZED]
+        status: { type: string, enum: [ACTIVE, RESOLVED, SNOOZED] }
         createdAt: { type: string, format: date-time }
-        resolvedAt: { type: string, format: date-time, nullable: true }
-        inventoryItem:
-          $ref: '#/components/schemas/InventoryItem'
-
-    ValuationRow:
-      type: object
-      properties:
-        productId: { type: string }
-        sku: { type: string }
-        name: { type: string }
-        category: { type: string, nullable: true }
-        totalQty: { type: integer, example: 150 }
-        currentValue: { type: string, example: "6750.00" }
-        originalValue: { type: string, example: "7498.50" }
-        valueLostToDecay: { type: string, example: "748.50" }
-        locationCount: { type: integer, example: 3 }
-
-  parameters:
-    cursor:
-      name: cursor
-      in: query
-      schema: { type: string }
-      description: Cursor from previous page (last item's id)
-    limit:
-      name: limit
-      in: query
-      schema: { type: integer, default: 20, maximum: 100 }
-      description: Number of items per page (max 100)
+        inventoryItem: { $ref: "#/components/schemas/InventoryItem" }
 
 security:
-  - bearerAuth: []
+  - BearerAuth: []
 
 paths:
-  # ─── Auth ──────────────────────────────────────────────────────────────
+  /health:
+    get:
+      summary: Health check
+      security: []
+      tags: [System]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
 
   /auth/register:
     post:
-      tags: [Auth]
-      summary: Register a new user (and tenant if slug is new)
+      summary: Register new tenant and admin user
       security: []
+      tags: [Auth]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [email, password, firstName, lastName, tenantSlug]
+              required: [email, password, firstName, lastName, tenantName]
               properties:
-                email: { type: string, format: email, example: "admin@acme.com" }
-                password: { type: string, minLength: 8, example: "Secure@123" }
-                firstName: { type: string, example: "John" }
-                lastName: { type: string, example: "Doe" }
-                tenantSlug: { type: string, example: "acme-corp" }
-                tenantName: { type: string, example: "Acme Corp" }
+                email: { type: string, example: "admin@mycompany.com" }
+                password: { type: string, example: "SecurePass1" }
+                firstName: { type: string, example: "Alice" }
+                lastName: { type: string, example: "Smith" }
+                tenantName: { type: string, example: "My Company" }
       responses:
-        '201':
+        "201":
           description: Registered. Verification email sent.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  userId: { type: string }
-                  tenantId: { type: string }
-        '409': { description: Email already exists }
-        '422': { description: Validation error, content: { application/json: { schema: { $ref: '#/components/schemas/ValidationError' } } } }
+        "409": { description: Email already registered }
+        "422": { description: Validation error }
 
   /auth/verify-email:
     get:
-      tags: [Auth]
-      summary: Verify email address via token link
+      summary: Verify email address from link
       security: []
+      tags: [Auth]
       parameters:
-        - name: token
-          in: query
+        - in: query
+          name: token
           required: true
           schema: { type: string }
       responses:
-        '200': { description: Email verified }
-        '400': { description: Invalid or expired token }
+        "200": { description: Email verified }
+        "400": { description: Invalid or expired token }
 
   /auth/login:
     post:
-      tags: [Auth]
       summary: Login and receive JWT tokens
       security: []
+      tags: [Auth]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [email, password, tenantSlug]
+              required: [email, password]
               properties:
-                email: { type: string, format: email, example: "admin@acme.com" }
-                password: { type: string, example: "Secure@123" }
-                tenantSlug: { type: string, example: "acme-corp" }
+                email: { type: string, example: "admin@mycompany.com" }
+                password: { type: string, example: "SecurePass1" }
       responses:
-        '200':
-          description: Tokens issued
+        "200":
+          description: Tokens returned
           content:
             application/json:
               schema:
@@ -242,129 +169,135 @@ paths:
                 properties:
                   accessToken: { type: string }
                   refreshToken: { type: string }
-                  user: { $ref: '#/components/schemas/User' }
-        '401': { description: Invalid credentials }
-        '403': { description: Email not verified }
-        '423': { description: Account locked }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { description: Invalid credentials }
+        "403": { description: Email not verified or account suspended }
+        "423": { description: Account locked }
 
   /auth/refresh:
     post:
-      tags: [Auth]
-      summary: Rotate refresh token and get new access token
+      summary: Rotate refresh token
       security: []
+      tags: [Auth]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [refreshToken]
               properties:
                 refreshToken: { type: string }
       responses:
-        '200':
-          description: New token pair
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  accessToken: { type: string }
-                  refreshToken: { type: string }
-        '401': { description: Invalid or expired refresh token }
+        "200": { description: New tokens }
+        "401": { description: Invalid or expired refresh token }
 
   /auth/logout:
     post:
+      summary: Logout — revoke tokens
       tags: [Auth]
-      summary: Revoke tokens and blacklist access token
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                refreshToken: { type: string }
       responses:
-        '200': { description: Logged out }
-        '401': { description: Unauthorized }
+        "200": { description: Logged out }
+        "401": { description: Unauthorized }
 
   /auth/forgot-password:
     post:
-      tags: [Auth]
       summary: Request password reset email
       security: []
+      tags: [Auth]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [email, tenantSlug]
               properties:
-                email: { type: string, format: email }
-                tenantSlug: { type: string }
+                email: { type: string }
       responses:
-        '200': { description: Reset email sent (always 200 to prevent enumeration) }
+        "200": { description: Reset link sent if email exists }
 
   /auth/reset-password:
     post:
-      tags: [Auth]
-      summary: Reset password using email token
+      summary: Set new password using reset token
       security: []
+      tags: [Auth]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [token, newPassword]
               properties:
                 token: { type: string }
-                newPassword: { type: string, minLength: 8 }
+                password: { type: string, example: "NewPass1234" }
       responses:
-        '200': { description: Password reset }
-        '400': { description: Invalid or expired token }
+        "200": { description: Password changed }
+        "400": { description: Invalid or expired token }
 
-  /auth/me:
-    get:
+  /auth/invite:
+    post:
+      summary: Invite a staff member by email
       tags: [Auth]
-      summary: Get current authenticated user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                role: { type: string, enum: [STAFF, MANAGER] }
       responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  user: { $ref: '#/components/schemas/User' }
-        '401': { description: Unauthorized }
+        "201": { description: Invitation sent }
+        "403": { description: Only ADMIN or MANAGER can invite }
 
-  # ─── Products ─────────────────────────────────────────────────────────
+  /auth/accept-invite:
+    post:
+      summary: Accept invitation — set name and password
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+                firstName: { type: string }
+                lastName: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: Account activated }
+        "400": { description: Invalid or expired token }
 
   /products:
     get:
+      summary: List products (cursor-paginated)
       tags: [Products]
-      summary: List all products (paginated)
       parameters:
-        - $ref: '#/components/parameters/cursor'
-        - $ref: '#/components/parameters/limit'
-        - name: category
-          in: query
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: category
+          schema: { type: string }
+        - in: query
+          name: search
           schema: { type: string }
       responses:
-        '200':
+        "200":
+          description: Paginated product list
           content:
             application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Pagination'
-                  - type: object
-                    properties:
-                      data: { type: array, items: { $ref: '#/components/schemas/Product' } }
-        '401': { description: Unauthorized }
+              schema: { $ref: "#/components/schemas/Pagination" }
+        "401": { description: Unauthorized }
+
     post:
+      summary: Create a product
       tags: [Products]
-      summary: Create a product (ADMIN, MANAGER)
       requestBody:
         required: true
         content:
@@ -373,101 +306,84 @@ paths:
               type: object
               required: [sku, name, unitPrice]
               properties:
-                sku: { type: string, example: "WIDGET-001" }
-                name: { type: string, example: "Blue Widget" }
-                description: { type: string }
-                category: { type: string, example: "Electronics" }
-                unitPrice: { type: number, example: 49.99 }
-                reorderThreshold: { type: integer, default: 0 }
-                isDecayEnabled: { type: boolean, default: false }
-                decayDaysThreshold: { type: integer, default: 30 }
-                decayPercent: { type: number, default: 10 }
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: '#/components/schemas/Product' }
-        '403': { description: Forbidden }
-        '409': { description: SKU already exists }
-        '422': { description: Validation error }
-
-  /products/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema: { type: string }
-    get:
-      tags: [Products]
-      summary: Get a product by ID
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: '#/components/schemas/Product' }
-        '404': { description: Not found }
-    patch:
-      tags: [Products]
-      summary: Update a product (ADMIN, MANAGER)
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name: { type: string }
-                description: { type: string }
+                sku: { type: string, example: "PROD-001" }
+                name: { type: string, example: "Widget Alpha" }
                 category: { type: string }
-                unitPrice: { type: number }
-                reorderThreshold: { type: integer }
+                unitPrice: { type: number, example: 29.99 }
+                reorderThreshold: { type: integer, example: 10 }
                 isDecayEnabled: { type: boolean }
                 decayDaysThreshold: { type: integer }
                 decayPercent: { type: number }
       responses:
-        '200': { description: Updated }
-        '403': { description: Forbidden }
-        '404': { description: Not found }
-    delete:
-      tags: [Products]
-      summary: Soft-delete a product (ADMIN only)
-      responses:
-        '204': { description: Deleted }
-        '403': { description: Forbidden }
-        '404': { description: Not found }
+        "201": { description: Product created }
+        "403": { description: STAFF cannot create products }
+        "409": { description: SKU already exists in tenant }
 
-  # ─── Inventory ────────────────────────────────────────────────────────
+  /products/{id}:
+    get:
+      summary: Get product by ID
+      tags: [Products]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Product }
+        "404": { description: Not found }
+    patch:
+      summary: Update product
+      tags: [Products]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Product" }
+      responses:
+        "200": { description: Updated }
+        "403": { description: Forbidden }
+        "404": { description: Not found }
+    delete:
+      summary: Soft-delete product
+      tags: [Products]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+        "403": { description: Forbidden }
 
   /inventory:
     get:
+      summary: List inventory items
       tags: [Inventory]
-      summary: List inventory items (paginated)
       parameters:
-        - $ref: '#/components/parameters/cursor'
-        - $ref: '#/components/parameters/limit'
-        - name: locationId
-          in: query
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer }
+        - in: query
+          name: productId
+          schema: { type: string }
+        - in: query
+          name: locationId
           schema: { type: string }
       responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Pagination'
-                  - type: object
-                    properties:
-                      data: { type: array, items: { $ref: '#/components/schemas/InventoryItem' } }
+        "200": { description: Inventory list }
+        "401": { description: Unauthorized }
 
   /inventory/receive:
     post:
+      summary: Receive inbound stock
       tags: [Inventory]
-      summary: Receive stock (INBOUND) — ADMIN, MANAGER
       requestBody:
         required: true
         content:
@@ -478,29 +394,18 @@ paths:
               properties:
                 productId: { type: string }
                 locationId: { type: string }
-                quantity: { type: integer, minimum: 1, example: 100 }
-                supplierRef: { type: string, example: "PO-2024-001" }
+                quantity: { type: integer, example: 100 }
                 note: { type: string }
+                supplierRef: { type: string, example: "PO-2024-001" }
       responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  inventoryItemId: { type: string }
-                  newQuantity: { type: integer }
-                  transactionId: { type: string }
-        '400': { description: Invalid quantity }
-        '403': { description: Forbidden }
-        '404': { description: Product or location not found }
-        '422': { description: Validation error }
+        "201": { description: Stock received }
+        "404": { description: Product or location not found }
+        "422": { description: Validation error }
 
   /inventory/transfer:
     post:
+      summary: Transfer stock between locations
       tags: [Inventory]
-      summary: Transfer stock between locations — all roles
       requestBody:
         required: true
         content:
@@ -512,74 +417,48 @@ paths:
                 productId: { type: string }
                 fromLocationId: { type: string }
                 toLocationId: { type: string }
-                quantity: { type: integer, minimum: 1 }
+                quantity: { type: integer, example: 25 }
                 note: { type: string }
       responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  outTransactionId: { type: string }
-                  inTransactionId: { type: string }
-                  sourceQuantity: { type: integer }
-                  destQuantity: { type: integer }
-        '400': { description: Same location or invalid quantity }
-        '422': { description: Insufficient stock }
+        "201": { description: Transfer complete }
+        "409": { description: Insufficient stock }
 
   /inventory/adjust:
     post:
+      summary: Adjust stock (shrinkage, damage, cycle count)
       tags: [Inventory]
-      summary: Adjust inventory quantity (shrinkage, damage) — ADMIN, MANAGER
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [productId, locationId, quantityDelta]
+              required: [productId, locationId, quantityDelta, note]
               properties:
                 productId: { type: string }
                 locationId: { type: string }
-                quantityDelta: { type: integer, example: -3, description: "Negative to reduce, positive to add" }
+                quantityDelta: { type: integer, example: -5 }
                 note: { type: string, example: "Damaged goods written off" }
       responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  inventoryItemId: { type: string }
-                  newQuantity: { type: integer }
-                  transactionId: { type: string }
-        '422': { description: Would result in negative stock }
-
-  # ─── Locations ────────────────────────────────────────────────────────
+        "201": { description: Adjusted }
+        "409": { description: Would result in negative stock }
 
   /locations:
     get:
+      summary: List warehouse locations
       tags: [Locations]
-      summary: List locations (paginated)
       parameters:
-        - $ref: '#/components/parameters/cursor'
-        - $ref: '#/components/parameters/limit'
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer }
       responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Pagination'
-                  - type: object
-                    properties:
-                      data: { type: array, items: { $ref: '#/components/schemas/Location' } }
+        "200": { description: Location list }
     post:
+      summary: Create location
       tags: [Locations]
-      summary: Create a location (ADMIN, MANAGER)
       requestBody:
         required: true
         content:
@@ -588,27 +467,32 @@ paths:
               type: object
               required: [name]
               properties:
-                name: { type: string, example: "Main Warehouse" }
-                address: { type: string, example: "123 Industrial Ave" }
+                name: { type: string, example: "Warehouse A" }
+                address: { type: string }
       responses:
-        '201': { description: Created }
-        '409': { description: Name already exists }
+        "201": { description: Location created }
+        "403": { description: Forbidden }
 
   /locations/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema: { type: string }
     get:
+      summary: Get location
       tags: [Locations]
-      summary: Get a location
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
       responses:
-        '200': { description: OK }
-        '404': { description: Not found }
+        "200": { description: Location }
+        "404": { description: Not found }
     patch:
+      summary: Update location
       tags: [Locations]
-      summary: Update a location (ADMIN, MANAGER)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
       requestBody:
         content:
           application/json:
@@ -618,92 +502,72 @@ paths:
                 name: { type: string }
                 address: { type: string }
       responses:
-        '200': { description: Updated }
+        "200": { description: Updated }
     delete:
+      summary: Soft-delete location
       tags: [Locations]
-      summary: Soft-delete a location (ADMIN only — must have no active inventory)
-      responses:
-        '204': { description: Deleted }
-        '409': { description: Location has active inventory }
-
-  # ─── Transactions ─────────────────────────────────────────────────────
-
-  /transactions:
-    get:
-      tags: [Transactions]
-      summary: List transactions with filters (paginated)
       parameters:
-        - $ref: '#/components/parameters/cursor'
-        - $ref: '#/components/parameters/limit'
-        - name: productId
-          in: query
-          schema: { type: string }
-        - name: locationId
-          in: query
-          schema: { type: string }
-        - name: type
-          in: query
-          schema: { type: string, enum: [INBOUND, OUTBOUND, TRANSFER_IN, TRANSFER_OUT, ADJUSTMENT] }
-        - name: from
-          in: query
-          schema: { type: string, format: date-time }
-        - name: to
-          in: query
-          schema: { type: string, format: date-time }
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Pagination'
-                  - type: object
-                    properties:
-                      data: { type: array, items: { $ref: '#/components/schemas/StockTransaction' } }
-
-  /transactions/{id}:
-    get:
-      tags: [Transactions]
-      summary: Get a transaction by ID
-      parameters:
-        - name: id
-          in: path
+        - in: path
+          name: id
           required: true
           schema: { type: string }
       responses:
-        '200': { description: OK }
-        '404': { description: Not found }
+        "204": { description: Deleted }
 
-  # ─── Alerts ───────────────────────────────────────────────────────────
+  /transactions:
+    get:
+      summary: List stock transactions
+      tags: [Transactions]
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer }
+        - in: query
+          name: type
+          schema: { type: string, enum: [INBOUND, OUTBOUND, TRANSFER_IN, TRANSFER_OUT, ADJUSTMENT] }
+        - in: query
+          name: productId
+          schema: { type: string }
+        - in: query
+          name: locationId
+          schema: { type: string }
+        - in: query
+          name: startDate
+          schema: { type: string, format: date }
+        - in: query
+          name: endDate
+          schema: { type: string, format: date }
+      responses:
+        "200": { description: Transaction list }
+        "401": { description: Unauthorized }
 
   /alerts:
     get:
+      summary: List stock alerts
       tags: [Alerts]
-      summary: List stock alerts (paginated)
       parameters:
-        - $ref: '#/components/parameters/cursor'
-        - $ref: '#/components/parameters/limit'
-        - name: status
-          in: query
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer }
+        - in: query
+          name: status
           schema: { type: string, enum: [ACTIVE, RESOLVED, SNOOZED] }
       responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Pagination'
-                  - type: object
-                    properties:
-                      data: { type: array, items: { $ref: '#/components/schemas/StockAlert' } }
+        "200": { description: Alert list }
 
   /alerts/{id}:
     patch:
+      summary: Update alert status
       tags: [Alerts]
-      summary: Update alert status (ADMIN, MANAGER)
       parameters:
-        - name: id
-          in: path
+        - in: path
+          name: id
           required: true
           schema: { type: string }
       requestBody:
@@ -712,80 +576,41 @@ paths:
           application/json:
             schema:
               type: object
-              required: [status]
               properties:
-                status: { type: string, enum: [RESOLVED, SNOOZED] }
+                status: { type: string, enum: [ACTIVE, RESOLVED, SNOOZED] }
       responses:
-        '200': { description: Updated }
-        '404': { description: Alert not found }
-
-  # ─── Reports ──────────────────────────────────────────────────────────
+        "200": { description: Updated }
+        "403": { description: Forbidden }
+        "404": { description: Not found }
 
   /reports/valuation:
     get:
+      summary: Inventory valuation report
       tags: [Reports]
-      summary: Inventory valuation report — current vs original value (ADMIN, MANAGER)
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - name: cursor
-          in: query
-          description: Numeric offset for this heavy aggregation query
-          schema: { type: integer, default: 0 }
+        - in: query
+          name: category
+          schema: { type: string }
       responses:
-        '200':
+        "200":
+          description: Valuation data per product
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  data: { type: array, items: { $ref: '#/components/schemas/ValuationRow' } }
-                  nextOffset: { type: integer, nullable: true }
-        '403': { description: Forbidden }
-
-  /reports/decay/{inventoryItemId}:
-    get:
-      tags: [Reports]
-      summary: Decay history for an inventory item (ADMIN, MANAGER)
-      parameters:
-        - name: inventoryItemId
-          in: path
-          required: true
-          schema: { type: string }
-        - $ref: '#/components/parameters/cursor'
-        - $ref: '#/components/parameters/limit'
-      responses:
-        '200': { description: Decay log entries }
-
-  /reports/decay/trigger:
-    post:
-      tags: [Reports]
-      summary: Manually trigger the dead-stock decay job (ADMIN only)
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  processed: { type: integer }
-                  skipped: { type: integer }
-                  errors: { type: integer }
-        '403': { description: Forbidden }
-
-  /reports/audit:
-    get:
-      tags: [Reports]
-      summary: Audit log for the tenant (ADMIN only)
-      parameters:
-        - $ref: '#/components/parameters/cursor'
-        - $ref: '#/components/parameters/limit'
-        - name: entityType
-          in: query
-          schema: { type: string }
-        - name: entityId
-          in: query
-          schema: { type: string }
-      responses:
-        '200': { description: Audit entries }
-        '403': { description: Forbidden }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sku: { type: string }
+                        name: { type: string }
+                        totalQty: { type: integer }
+                        currentValue: { type: number }
+                        originalValue: { type: number }
+                        valueLostToDecay: { type: number }
+                        locationCount: { type: integer }
+                  total: { type: integer }
+                  generatedAt: { type: string, format: date-time }
+        "403": { description: STAFF cannot access reports }

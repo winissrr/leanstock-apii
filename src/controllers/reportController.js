@@ -1,84 +1,38 @@
 const prisma = require('../config/database');
-const { parsePaginationParams } = require('../utils/pagination');
-const decayService = require('../services/decayService');
+const asyncHandler = require('../utils/asyncHandler');
 
-async function getValuationReport(req, res) {
-  const { tenantId } = req.user;
-  const { cursor, limit } = parsePaginationParams(req.query);
+exports.valuation = asyncHandler(async (req, res) => {
+  const { category } = req.query;
 
-  const rows = await prisma.$queryRaw`
-    SELECT
-      p.id                                                          AS "productId",
-      p.sku                                                         AS "sku",
-      p.name                                                        AS "name",
-      p.category                                                    AS "category",
-      SUM(i.quantity)::int                                          AS "totalQty",
-      SUM(i.quantity * i.current_price)::numeric(14,2)              AS "currentValue",
-      SUM(i.quantity * i.original_price)::numeric(14,2)             AS "originalValue",
-      SUM(i.quantity * (i.original_price - i.current_price))::numeric(14,2) AS "valueLostToDecay",
-      COUNT(DISTINCT i.location_id)::int                            AS "locationCount"
-    FROM inventory_items i
-    JOIN products p ON p.id = i.product_id
-    WHERE i.tenant_id = ${tenantId}
-      AND i.quantity > 0
-      AND p.deleted_at IS NULL
-    GROUP BY p.id, p.sku, p.name, p.category
-    ORDER BY "currentValue" DESC
-    LIMIT ${limit}
-    OFFSET ${cursor ? parseInt(cursor, 10) : 0}
-  `;
-
-  return res.status(200).json({
-    data: rows,
-   
-    nextOffset: rows.length === limit ? (cursor ? parseInt(cursor, 10) : 0) + limit : null,
-  });
-}
-
-async function getDecayHistory(req, res) {
-  const { tenantId } = req.user;
-  const { cursor, limit } = parsePaginationParams(req.query);
-
-  const result = await decayService.getDecayHistory({
-    tenantId,
-    inventoryItemId: req.params.inventoryItemId,
-    cursor,
-    limit,
+  const items = await prisma.inventoryItem.findMany({
+    where: { tenantId: req.tenantId, quantity: { gt: 0 }, product: { deletedAt: null, ...(category && { category }) } },
+    include: { product: true, location: true },
   });
 
-  return res.status(200).json(result);
-}
+  const grouped = {};
+  for (const item of items) {
+    const p = item.product;
+    if (!grouped[p.id]) {
+      grouped[p.id] = { sku: p.sku, name: p.name, category: p.category, totalQty: 0, currentValue: 0, originalValue: 0, valueLostToDecay: 0, locationCount: new Set() };
+    }
+    const g = grouped[p.id];
+    const qty = item.quantity;
+    const curr = parseFloat(item.currentPrice);
+    const orig = parseFloat(item.originalPrice);
+    g.totalQty += qty;
+    g.currentValue += qty * curr;
+    g.originalValue += qty * orig;
+    g.valueLostToDecay += qty * (orig - curr);
+    g.locationCount.add(item.locationId);
+  }
 
-async function triggerDecay(req, res) {
-  const result = await decayService.runDecay();
-  return res.status(200).json({
-    message: 'Decay job executed.',
-    ...result,
-  });
-}
+  const report = Object.values(grouped).map((g) => ({
+    ...g,
+    currentValue: +g.currentValue.toFixed(2),
+    originalValue: +g.originalValue.toFixed(2),
+    valueLostToDecay: +g.valueLostToDecay.toFixed(2),
+    locationCount: g.locationCount.size,
+  })).sort((a, b) => b.currentValue - a.currentValue);
 
-async function getAuditLog(req, res) {
-  const { tenantId } = req.user;
-  const { cursor, limit } = parsePaginationParams(req.query);
-  const { entityType, entityId } = req.query;
-
-  const where = { tenantId };
-  if (entityType) where.entityType = entityType;
-  if (entityId) where.entityId = entityId;
-
-  const rows = await prisma.auditLog.findMany({
-    where,
-    take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: { createdAt: 'desc' },
-    include: {
-      user: { select: { id: true, firstName: true, lastName: true, email: true } },
-    },
-  });
-
-  const hasMore = rows.length > limit;
-  const data = hasMore ? rows.slice(0, limit) : rows;
-  return res.status(200).json({ data, nextCursor: hasMore ? data[data.length - 1].id : null, hasMore });
-}
-
-module.exports = { getValuationReport, getDecayHistory, triggerDecay, getAuditLog };
+  res.json({ data: report, total: report.length, generatedAt: new Date().toISOString() });
+});

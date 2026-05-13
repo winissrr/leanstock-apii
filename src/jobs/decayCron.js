@@ -1,42 +1,18 @@
 const cron = require('node-cron');
 const env = require('../config/env');
-const { runDecay } = require('../services/decayService');
-
-let task;
+const { applyDecay } = require('../services/decayService');
 
 function startDecayCron() {
-  if (task) return task; 
-
-  const cronExpr = env.DECAY_CRON || '0 2 * * *';
-
-  if (!cron.validate(cronExpr)) {
-    console.error(`[decayCron] Invalid cron expression: "${cronExpr}". Job not scheduled.`);
-    return null;
-  }
-
-  task = cron.schedule(cronExpr, async () => {
-    const start = Date.now();
-    console.log(`[decayCron] Starting decay run at ${new Date().toISOString()}`);
+  console.log(`[Cron] Decay job scheduled: "${env.DECAY_CRON}"`);
+  cron.schedule(env.DECAY_CRON, async () => {
+    console.log('[Cron] Running decay job at', new Date().toISOString());
     try {
-      const stats = await runDecay();
-      const elapsed = Date.now() - start;
-      console.log(`[decayCron] Completed in ${elapsed}ms — processed: ${stats.processed}, skipped: ${stats.skipped}, errors: ${stats.errors}`);
+      const count = await applyDecay();
+      console.log(`[Cron] Decay complete. Items processed: ${count}`);
     } catch (err) {
-      console.error('[decayCron] Fatal error during decay run:', err.message);
+      console.error('[Cron] Decay job failed:', err.message);
     }
-  }, {
-    timezone: 'UTC',
-  });
-
-  console.log(`[decayCron] Decay job scheduled: ${cronExpr} (UTC)`);
-  return task;
+  }, { timezone: 'UTC' });
 }
 
-function stopDecayCron() {
-  if (task) {
-    task.stop();
-    task = null;
-  }
-}
-
-module.exports = { startDecayCron, stopDecayCron };
+module.exports = { startDecayCron };
