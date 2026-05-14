@@ -15,4 +15,6 @@ r.post('/forgot-password', c.forgotPassword);
 r.post('/reset-password', c.resetPassword);
 r.post('/invite', authMw, tenantScope, rbac('ADMIN', 'MANAGER'), c.inviteStaff);
 r.post('/accept-invite', c.acceptInvite);
+r.get('/accept-invite', c.acceptInviteForm);  
+r.post('/accept-invite', c.acceptInvite);
 module.exports = r;
